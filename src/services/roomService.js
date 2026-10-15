@@ -636,7 +636,7 @@ export const RoomService = {
 
     if (Array.isArray(requests)) {
       requests
-        .filter((req) => req.roomId === room.id && (req.status === 'approved' || req.status === 'pending') && req.checkIn && req.checkOut)
+        .filter((req) => req.roomId === room.id && req.status === 'approved' && req.checkIn && req.checkOut)
         .forEach((req) => {
           const dates = getBookedNightsInRange(req.checkIn, req.checkOut);
           dates.forEach((d) => bookedSet.add(d));
@@ -705,16 +705,30 @@ export const RoomService = {
     }
     if (!current) throw new Error('Room not found');
 
+    const removedEntry = (current.bookedRanges || []).find((b) => b.id === rangeId);
     const updatedRanges = (current.bookedRanges || []).filter((b) => b.id !== rangeId);
+
+    const payload = {
+      id: roomId,
+      bookedRanges: updatedRanges,
+      updatedAt: new Date().toISOString()
+    };
+
+    // If activeBooking matches the unlocked range or all ranges are now cleared, clear activeBooking too!
+    if (
+      !updatedRanges.length ||
+      (current.activeBooking && (
+        current.activeBooking.id === rangeId ||
+        (removedEntry && current.activeBooking.checkIn === removedEntry.checkIn && current.activeBooking.checkOut === removedEntry.checkOut)
+      ))
+    ) {
+      payload.activeBooking = null;
+    }
 
     const res = await fetch('/api/rooms', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id: roomId,
-        bookedRanges: updatedRanges,
-        updatedAt: new Date().toISOString()
-      })
+      body: JSON.stringify(payload)
     });
 
     if (!res.ok) {

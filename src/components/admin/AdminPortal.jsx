@@ -310,10 +310,28 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
 
   const handleRemoveBookedRange = async (roomId, rangeId) => {
     try {
+      const targetRoom = rooms.find((r) => r.id === roomId);
+      const targetRange = targetRoom?.bookedRanges?.find((b) => b.id === rangeId);
+
       await RoomService.removeBookedRange(roomId, rangeId);
-      const freshRooms = await RoomService.getRooms();
+
+      // If any approved or pending requests match this room and date range, mark them unlocked so they don't block
+      if (targetRange && targetRange.checkIn && targetRange.checkOut) {
+        const matchingRequests = bookingRequests.filter(
+          (req) => req.roomId === roomId && req.checkIn === targetRange.checkIn && req.checkOut === targetRange.checkOut && (req.status === 'approved' || req.status === 'pending')
+        );
+        for (const req of matchingRequests) {
+          await BookingRequestService.updateStatus(req.id, 'declined', 'Dates unlocked by staff from CMS');
+        }
+      }
+
+      const [freshRooms, freshRequests] = await Promise.all([
+        RoomService.getRooms(true),
+        BookingRequestService.getRequests(true)
+      ]);
       setRooms(freshRooms);
-      triggerToast('Date lock removed! Those dates are now open for booking on the website.');
+      setBookingRequests(freshRequests);
+      triggerToast('Date lock removed! Those dates are now completely open for booking on the website.');
     } catch (err) {
       console.error('Error removing date lock:', err);
       triggerToast('Error removing date lock: ' + err.message);
@@ -447,19 +465,57 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
 
   const handleDeclineRequest = async (requestId) => {
     if (window.confirm('Are you sure you want to decline / archive this request?')) {
+      const targetReq = bookingRequests.find((r) => r.id === requestId);
       await BookingRequestService.updateStatus(requestId, 'declined');
-      const freshRequests = await BookingRequestService.getRequests();
+
+      // If this request had locked dates on the room, remove the date lock on the room too!
+      if (targetReq && targetReq.roomId && targetReq.checkIn && targetReq.checkOut) {
+        const targetRoom = rooms.find((r) => r.id === targetReq.roomId);
+        if (targetRoom && Array.isArray(targetRoom.bookedRanges)) {
+          const matchingRange = targetRoom.bookedRanges.find(
+            (b) => b.checkIn === targetReq.checkIn && b.checkOut === targetReq.checkOut
+          );
+          if (matchingRange) {
+            await RoomService.removeBookedRange(targetRoom.id, matchingRange.id);
+          }
+        }
+      }
+
+      const [freshRooms, freshRequests] = await Promise.all([
+        RoomService.getRooms(true),
+        BookingRequestService.getRequests(true)
+      ]);
+      setRooms(freshRooms);
       setBookingRequests(freshRequests);
-      triggerToast('Booking request declined.');
+      triggerToast('Booking request declined and dates unlocked.');
     }
   };
 
   const handleDeleteRequest = async (requestId) => {
     if (window.confirm('Permanently remove this booking inquiry from the CMS database?')) {
+      const targetReq = bookingRequests.find((r) => r.id === requestId);
       await BookingRequestService.deleteRequest(requestId);
-      const freshRequests = await BookingRequestService.getRequests();
+
+      // If this request had locked dates on the room, remove the date lock on the room too!
+      if (targetReq && targetReq.roomId && targetReq.checkIn && targetReq.checkOut) {
+        const targetRoom = rooms.find((r) => r.id === targetReq.roomId);
+        if (targetRoom && Array.isArray(targetRoom.bookedRanges)) {
+          const matchingRange = targetRoom.bookedRanges.find(
+            (b) => b.checkIn === targetReq.checkIn && b.checkOut === targetReq.checkOut
+          );
+          if (matchingRange) {
+            await RoomService.removeBookedRange(targetRoom.id, matchingRange.id);
+          }
+        }
+      }
+
+      const [freshRooms, freshRequests] = await Promise.all([
+        RoomService.getRooms(true),
+        BookingRequestService.getRequests(true)
+      ]);
+      setRooms(freshRooms);
       setBookingRequests(freshRequests);
-      triggerToast('Booking inquiry permanently removed.');
+      triggerToast('Booking inquiry permanently removed from database.');
     }
   };
 
