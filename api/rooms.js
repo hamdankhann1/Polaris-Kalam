@@ -322,12 +322,22 @@ export default async function handler(req, res) {
     const { db, error: dbError, config: mongoConfig } = await getDatabase();
     const collection = db ? db.collection('rooms') : null;
 
-    // Ensure MongoDB has rooms seeded if collection is empty & optimize indexes
+    // Ensure MongoDB has rooms seeded ONLY on brand new uninitialized database setup
+    // If the admin intentionally clears out rooms, we NEVER re-seed them!
     if (collection) {
       try {
-        const count = await collection.countDocuments();
-        if (count === 0) {
-          await collection.insertMany(INITIAL_ROOMS.map((r) => ({ ...r, activeBooking: null, bookedRanges: [] })));
+        const metadataCol = db.collection('system_metadata');
+        const meta = await metadataCol.findOne({ key: 'has_seeded_initial_rooms' });
+        if (!meta) {
+          const count = await collection.countDocuments();
+          if (count === 0) {
+            await collection.insertMany(INITIAL_ROOMS.map((r) => ({ ...r, activeBooking: null, bookedRanges: [] })));
+          }
+          await metadataCol.updateOne(
+            { key: 'has_seeded_initial_rooms' },
+            { $set: { key: 'has_seeded_initial_rooms', initialized: true, createdAt: new Date().toISOString() } },
+            { upsert: true }
+          );
         }
         collection.createIndex({ id: 1 }, { unique: true }).catch(() => {});
         collection.createIndex({ roomNumber: 1 }).catch(() => {});
@@ -469,16 +479,40 @@ export default async function handler(req, res) {
     }
 
     // -----------------------------------------------------------------------
-    // DELETE: Delete room
+    // DELETE: Delete room OR Clear all rooms
     // -----------------------------------------------------------------------
     if (req.method === 'DELETE') {
       const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
       const id = body?.id || req.query?.id;
+      const all = body?.all === true || req.query?.all === 'true';
 
+      // 1. Clear out ALL rooms from hotel inventory
+      if (all) {
+        if (collection) {
+          await collection.deleteMany({});
+          // Ensure metadata flag is permanently recorded so empty database is never auto-seeded
+          await db.collection('system_metadata').updateOne(
+            { key: 'has_seeded_initial_rooms' },
+            { $set: { key: 'has_seeded_initial_rooms', initialized: true, clearedAt: new Date().toISOString() } },
+            { upsert: true }
+          );
+          return res.status(200).json({ success: true, message: 'All rooms cleared from database inventory', data: [], source: 'mongodb', dbConnected: true });
+        }
+
+        fallbackRooms = [];
+        return res.status(200).json({ success: true, message: 'All rooms cleared from temporary memory', data: [], source: 'memory', dbConnected: false });
+      }
+
+      // 2. Delete a single specific room
       if (!id) return res.status(400).json({ success: false, error: 'Room ID required' });
 
       if (collection) {
         await collection.deleteOne({ id });
+        await db.collection('system_metadata').updateOne(
+          { key: 'has_seeded_initial_rooms' },
+          { $set: { key: 'has_seeded_initial_rooms', initialized: true } },
+          { upsert: true }
+        );
         return res.status(200).json({ success: true, deletedId: id, source: 'mongodb', dbConnected: true });
       }
 

@@ -24,7 +24,9 @@ export default function RoomFormModal({ isOpen, onClose, roomToEdit = null, onSa
   const [roomNumber, setRoomNumber] = useState('');
   const [name, setName] = useState('');
   const [floor, setFloor] = useState('Floor 1');
+  const [isCustomFloor, setIsCustomFloor] = useState(false);
   const [tier, setTier] = useState('Deluxe Alpine');
+  const [isCustomTier, setIsCustomTier] = useState(false);
   const [pricePKR, setPricePKR] = useState(45000);
   const [capacity, setCapacity] = useState('2 Guests • 1 King Bed');
   const [amenities, setAmenities] = useState('Panoramic Mountain View, Heated Floors, Private Bath');
@@ -36,8 +38,20 @@ export default function RoomFormModal({ isOpen, onClose, roomToEdit = null, onSa
     if (roomToEdit) {
       setRoomNumber(roomToEdit.roomNumber || '');
       setName(roomToEdit.name || '');
-      setFloor(roomToEdit.floor || 'Floor 1');
-      setTier(roomToEdit.tier || 'Deluxe Alpine');
+      const currentFloor = roomToEdit.floor || 'Floor 1';
+      setFloor(currentFloor);
+      setIsCustomFloor(!FLOOR_CATEGORIES.includes(currentFloor));
+      const currentTier = roomToEdit.tier || 'Deluxe Alpine';
+      setTier(currentTier);
+      const standardTiers = [
+        'Top Suite / Presidential',
+        'Presidential Suite',
+        'Executive Suite',
+        'Deluxe Alpine',
+        'Forest Chalet',
+        'Luxury Studio'
+      ];
+      setIsCustomTier(!standardTiers.includes(currentTier));
       setPricePKR(roomToEdit.pricePKR || 45000);
       setCapacity(roomToEdit.capacity || '2 Guests • 1 King Bed');
       setAmenities(
@@ -50,7 +64,9 @@ export default function RoomFormModal({ isOpen, onClose, roomToEdit = null, onSa
       setRoomNumber('');
       setName('');
       setFloor('Floor 1');
+      setIsCustomFloor(false);
       setTier('Deluxe Alpine');
+      setIsCustomTier(false);
       setPricePKR(45000);
       setCapacity('2 Guests • 1 King Bed');
       setAmenities('Panoramic Mountain View, Heated Floors, Private Bath');
@@ -157,20 +173,41 @@ export default function RoomFormModal({ isOpen, onClose, roomToEdit = null, onSa
             </div>
 
             <div>
-              <label className="block text-[11px] font-mono uppercase tracking-wider text-stone-600 mb-1.5 font-medium">
-                Floor / Category *
-              </label>
-              <select
-                value={floor}
-                onChange={(e) => setFloor(e.target.value)}
-                className="w-full bg-stone-50 border border-stone-300 rounded-lg px-3.5 py-2.5 text-sm text-stone-900 focus:outline-none focus:border-amber-600 focus:bg-white focus:ring-1 focus:ring-amber-500 transition-colors cursor-pointer"
-              >
-                {FLOOR_CATEGORIES.map((cat) => (
-                  <option key={cat} value={cat}>
-                    {cat === 'Top Suite' ? '👑 Top Suite (Summit Penthouse)' : cat}
-                  </option>
-                ))}
-              </select>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-[11px] font-mono uppercase tracking-wider text-stone-600 font-medium">
+                  Floor / Category *
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setIsCustomFloor(!isCustomFloor)}
+                  className="text-[10px] font-mono text-[#B48A28] hover:text-[#8A661C] underline font-medium"
+                >
+                  {isCustomFloor ? 'Select Standard Floor' : '+ Custom Category'}
+                </button>
+              </div>
+
+              {isCustomFloor ? (
+                <input
+                  type="text"
+                  required
+                  value={floor}
+                  onChange={(e) => setFloor(e.target.value)}
+                  placeholder="e.g. Ground Floor, Riverside Wing"
+                  className="w-full bg-stone-50 border border-stone-300 rounded-lg px-3.5 py-2.5 text-sm text-stone-900 focus:outline-none focus:border-amber-600 focus:bg-white focus:ring-1 focus:ring-amber-500 transition-colors font-medium"
+                />
+              ) : (
+                <select
+                  value={floor}
+                  onChange={(e) => setFloor(e.target.value)}
+                  className="w-full bg-stone-50 border border-stone-300 rounded-lg px-3.5 py-2.5 text-sm text-stone-900 focus:outline-none focus:border-amber-600 focus:bg-white focus:ring-1 focus:ring-amber-500 transition-colors cursor-pointer"
+                >
+                  {FLOOR_CATEGORIES.map((cat) => (
+                    <option key={cat} value={cat}>
+                      {cat === 'Top Suite' ? '👑 Top Suite (Summit Penthouse)' : cat}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
           </div>
 
@@ -192,21 +229,41 @@ export default function RoomFormModal({ isOpen, onClose, roomToEdit = null, onSa
           {/* Row 3: Tier & Price */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-[11px] font-mono uppercase tracking-wider text-stone-600 mb-1.5 font-medium">
-                Room Tier / Class
-              </label>
-              <select
-                value={tier}
-                onChange={(e) => setTier(e.target.value)}
-                className="w-full bg-stone-50 border border-stone-300 rounded-lg px-3.5 py-2.5 text-sm text-stone-900 focus:outline-none focus:border-amber-600 focus:bg-white focus:ring-1 focus:ring-amber-500 transition-colors cursor-pointer"
-              >
-                <option value="Top Suite / Presidential">Top Suite / Presidential</option>
-                <option value="Presidential Suite">Presidential Suite</option>
-                <option value="Executive Suite">Executive Suite</option>
-                <option value="Deluxe Alpine">Deluxe Alpine</option>
-                <option value="Forest Chalet">Forest Chalet</option>
-                <option value="Luxury Studio">Luxury Studio</option>
-              </select>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-[11px] font-mono uppercase tracking-wider text-stone-600 font-medium">
+                  Room Tier / Class
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setIsCustomTier(!isCustomTier)}
+                  className="text-[10px] font-mono text-[#B48A28] hover:text-[#8A661C] underline font-medium"
+                >
+                  {isCustomTier ? 'Select Standard Tier' : '+ Custom Class'}
+                </button>
+              </div>
+
+              {isCustomTier ? (
+                <input
+                  type="text"
+                  value={tier}
+                  onChange={(e) => setTier(e.target.value)}
+                  placeholder="e.g. Honeymoon Suite, Riverside Villa"
+                  className="w-full bg-stone-50 border border-stone-300 rounded-lg px-3.5 py-2.5 text-sm text-stone-900 focus:outline-none focus:border-amber-600 focus:bg-white focus:ring-1 focus:ring-amber-500 transition-colors font-medium"
+                />
+              ) : (
+                <select
+                  value={tier}
+                  onChange={(e) => setTier(e.target.value)}
+                  className="w-full bg-stone-50 border border-stone-300 rounded-lg px-3.5 py-2.5 text-sm text-stone-900 focus:outline-none focus:border-amber-600 focus:bg-white focus:ring-1 focus:ring-amber-500 transition-colors cursor-pointer"
+                >
+                  <option value="Top Suite / Presidential">Top Suite / Presidential</option>
+                  <option value="Presidential Suite">Presidential Suite</option>
+                  <option value="Executive Suite">Executive Suite</option>
+                  <option value="Deluxe Alpine">Deluxe Alpine</option>
+                  <option value="Forest Chalet">Forest Chalet</option>
+                  <option value="Luxury Studio">Luxury Studio</option>
+                </select>
+              )}
             </div>
 
             <div>

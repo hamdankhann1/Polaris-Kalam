@@ -340,46 +340,49 @@ export default function BookingPage({
       {/* =========================================================================
           CATEGORY / FLOOR FILTER TABS
           ========================================================================= */}
-      <div className="max-w-7xl mx-auto px-2 sm:px-6 w-full max-w-full mb-8 overflow-hidden">
-        <div className="flex items-center justify-start sm:justify-center space-x-2 overflow-x-auto pb-2 px-2 scrollbar-none w-full max-w-full">
-          <button
-            onClick={() => setSelectedFloor("all")}
-            className={`px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-mono uppercase tracking-wider transition-all shrink-0 font-semibold ${
-              selectedFloor === "all"
-                ? "bg-[#B48A28] text-white font-bold shadow-xs"
-                : "bg-white text-stone-700 hover:text-stone-900 border border-stone-300 shadow-2xs"
-            }`}
-          >
-            All Suites ({rooms.length})
-          </button>
+      {rooms.length > 0 && (
+        <div className="max-w-7xl mx-auto px-2 sm:px-6 w-full max-w-full mb-8 overflow-hidden">
+          <div className="flex items-center justify-start sm:justify-center space-x-2 overflow-x-auto pb-2 px-2 scrollbar-none w-full max-w-full">
+            <button
+              onClick={() => setSelectedFloor("all")}
+              className={`px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-mono uppercase tracking-wider transition-all shrink-0 font-semibold ${
+                selectedFloor === "all"
+                  ? "bg-[#B48A28] text-white font-bold shadow-xs"
+                  : "bg-white text-stone-700 hover:text-stone-900 border border-stone-300 shadow-2xs"
+              }`}
+            >
+              All Suites ({rooms.length})
+            </button>
 
-          {FLOOR_CATEGORIES.map((cat) => {
-            const count = rooms.filter((r) => r.floor === cat).length;
-            const isTop = cat === "Top Suite";
+            {Array.from(new Set([...FLOOR_CATEGORIES, ...rooms.map((r) => r.floor).filter(Boolean)])).map((cat) => {
+              const count = rooms.filter((r) => r.floor === cat).length;
+              if (count === 0 && !FLOOR_CATEGORIES.includes(cat)) return null;
+              const isTop = cat === "Top Suite";
 
-            return (
-              <button
-                key={cat}
-                onClick={() => setSelectedFloor(cat)}
-                className={`px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-mono uppercase tracking-wider transition-all shrink-0 flex items-center space-x-1.5 font-semibold ${
-                  selectedFloor === cat
-                    ? "bg-[#B48A28] text-white font-bold shadow-xs"
-                    : isTop
-                      ? "bg-amber-50 text-[#8A661C] border border-amber-300 hover:bg-amber-100/60 font-bold"
-                      : "bg-white text-stone-700 hover:text-stone-900 border border-stone-300 shadow-2xs"
-                }`}
-              >
-                {isTop && (
-                  <Crown className="w-3.5 h-3.5 text-[#B48A28] shrink-0" />
-                )}
-                <span>
-                  {cat} ({count})
-                </span>
-              </button>
-            );
-          })}
+              return (
+                <button
+                  key={cat}
+                  onClick={() => setSelectedFloor(cat)}
+                  className={`px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-mono uppercase tracking-wider transition-all shrink-0 flex items-center space-x-1.5 font-semibold ${
+                    selectedFloor === cat
+                      ? "bg-[#B48A28] text-white font-bold shadow-xs"
+                      : isTop
+                        ? "bg-amber-50 text-[#8A661C] border border-amber-300 hover:bg-amber-100/60 font-bold"
+                        : "bg-white text-stone-700 hover:text-stone-900 border border-stone-300 shadow-2xs"
+                  }`}
+                >
+                  {isTop && (
+                    <Crown className="w-3.5 h-3.5 text-[#B48A28] shrink-0" />
+                  )}
+                  <span>
+                    {cat} ({count})
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* =========================================================================
           ROOMS GRID
@@ -388,6 +391,38 @@ export default function BookingPage({
         {isLoading ? (
           <div className="py-20 text-center text-stone-600 font-mono text-sm sm:text-base font-medium">
             Loading suites and availability...
+          </div>
+        ) : rooms.length === 0 ? (
+          <div className="py-16 sm:py-24 text-center rounded-3xl bg-white border border-stone-200/90 p-8 sm:p-12 shadow-xs max-w-2xl mx-auto my-6 space-y-5 animate-fadeIn">
+            <div className="w-16 h-16 rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center text-[#B48A28] mx-auto shadow-2xs">
+              <Sparkles className="w-8 h-8 text-[#B48A28]" />
+            </div>
+            <div className="space-y-2">
+              <h3 className="font-display text-2xl sm:text-3xl text-stone-900 font-medium tracking-tight">
+                Seasonal Inventory Allocation in Progress
+              </h3>
+              <p className="text-sm sm:text-base text-stone-600 max-w-md mx-auto leading-relaxed">
+                Our suite catalog is currently being updated by the concierge desk. For immediate bespoke reservations, private group inquiries, or custom dates, contact our concierge directly.
+              </p>
+            </div>
+            <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+              <a
+                href={`https://wa.me/${POLARIS_CONFIG.contact.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent('Hello Polaris Kalam Concierge, I would like to inquire about suite availability and reservations.')}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full sm:w-auto px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-mono uppercase tracking-wider font-bold transition-all flex items-center justify-center space-x-2 shadow-sm hover:scale-[1.01]"
+              >
+                <MessageSquare className="w-4 h-4" />
+                <span>Chat on WhatsApp ({POLARIS_CONFIG.contact.phone})</span>
+              </a>
+              <button
+                onClick={onReturnHome}
+                className="w-full sm:w-auto px-5 py-3 rounded-xl border border-stone-300 hover:border-stone-400 bg-white hover:bg-stone-50 text-stone-700 text-xs font-mono uppercase tracking-wider font-semibold transition-all flex items-center justify-center space-x-2 shadow-2xs"
+              >
+                <ArrowLeft className="w-4 h-4 text-stone-500" />
+                <span>Return to Homepage</span>
+              </button>
+            </div>
           </div>
         ) : filteredRooms.length === 0 ? (
           <div className="py-16 text-center text-stone-600 font-mono text-sm sm:text-base font-medium">

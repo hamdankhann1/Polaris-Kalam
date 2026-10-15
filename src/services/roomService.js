@@ -378,7 +378,7 @@ export const RoomService = {
           lastSyncedAt: new Date().toISOString()
         };
 
-        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+        if (json.success && Array.isArray(json.data)) {
           const cleaned = json.data.map(cleanRoom);
           cachedRooms = cleaned;
           notifyListeners(cleaned);
@@ -479,6 +479,7 @@ export const RoomService = {
    * Remove / Delete a room -> immediately deletes from database
    */
   async deleteRoom(roomId) {
+    const target = cachedRooms.find((r) => r.id === roomId);
     const res = await fetch('/api/rooms', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
@@ -490,9 +491,33 @@ export const RoomService = {
       throw new Error(err.error || 'Failed to delete room from database.');
     }
 
-    logAudit('ROOM_DELETED', roomId, '', {});
+    logAudit('ROOM_DELETED', roomId, target?.roomNumber || '', {});
+    cachedRooms = cachedRooms.filter((r) => r.id !== roomId);
+    notifyListeners(cachedRooms);
     await this.getRooms(true);
-    return { id: roomId };
+    return { id: roomId, roomNumber: target?.roomNumber || '' };
+  },
+
+  /**
+   * Clear all rooms from inventory -> removes all rooms from database
+   */
+  async clearAllRooms() {
+    const res = await fetch('/api/rooms', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ all: true })
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to clear rooms from database.');
+    }
+
+    logAudit('ALL_ROOMS_CLEARED', 'ALL', 'ALL', { clearedAt: new Date().toISOString() });
+    cachedRooms = [];
+    notifyListeners([]);
+    await this.getRooms(true);
+    return [];
   },
 
   /**

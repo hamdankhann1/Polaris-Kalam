@@ -39,6 +39,7 @@ import RoomDetailsModal from './RoomDetailsModal';
 import RoomFormModal from './RoomFormModal';
 import QuickPriceModal from './QuickPriceModal';
 import DeleteConfirmModal from './DeleteConfirmModal';
+import ClearAllRoomsModal from './ClearAllRoomsModal';
 import AddBookingRequestModal from './AddBookingRequestModal';
 
 /**
@@ -83,6 +84,9 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
   // Delete Room Modal State
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [roomToDelete, setRoomToDelete] = useState(null);
+
+  // Clear All Rooms Modal State
+  const [clearAllModalOpen, setClearAllModalOpen] = useState(false);
 
   // Add Booking Request Modal State
   const [addRequestModalOpen, setAddRequestModalOpen] = useState(false);
@@ -382,15 +386,49 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
     }
   };
 
-  // --- DELETE ROOM HANDLERS ---
+  // --- DELETE ROOM & INVENTORY HANDLERS ---
   const handleOpenDelete = (room) => {
     setRoomToDelete(room);
     setDeleteModalOpen(true);
   };
 
   const handleConfirmDelete = async (roomId) => {
-    const deleted = await RoomService.deleteRoom(roomId);
-    triggerToast(`Room #${deleted.roomNumber} removed from hotel inventory.`);
+    try {
+      const target = rooms.find((r) => r.id === roomId);
+      const roomNum = target?.roomNumber || roomId;
+      await RoomService.deleteRoom(roomId);
+      const freshRooms = await RoomService.getRooms(true);
+      setRooms(freshRooms);
+      triggerToast(`Room #${roomNum} removed from hotel inventory.`);
+    } catch (err) {
+      console.error('Error removing room:', err);
+      triggerToast('Error removing room: ' + err.message);
+    }
+  };
+
+  const handleClearAllRooms = async () => {
+    try {
+      await RoomService.clearAllRooms();
+      setRooms([]);
+      triggerToast('All rooms removed. Inventory is now completely cleared.');
+    } catch (err) {
+      console.error('Error clearing inventory:', err);
+      triggerToast('Error clearing inventory: ' + err.message);
+    }
+  };
+
+  const handleResetToDefaults = async () => {
+    try {
+      setIsLoading(true);
+      const fresh = await RoomService.resetToDefaults();
+      setRooms(fresh);
+      triggerToast('Inventory restored to default 8 suites across 4 floors + Top Penthouse.');
+    } catch (err) {
+      console.error('Error resetting inventory:', err);
+      triggerToast('Error resetting inventory: ' + err.message);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // --- BOOKING REQUEST HANDLERS ---
@@ -1222,11 +1260,11 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
                 </p>
               </div>
 
-              {/* PRIMARY ACTIONS: ADD ROOM & RECORD BOOKING */}
-              <div className="flex items-center space-x-2.5 shrink-0">
+              {/* PRIMARY ACTIONS: ADD ROOM, CLEAR ALL, RESET, RECORD BOOKING */}
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
                 <button
                   onClick={handleOpenAddRoom}
-                  className="px-4 py-2.5 rounded-lg bg-[#B48A28] hover:bg-[#9E7719] text-white text-xs font-mono uppercase tracking-wider font-semibold transition-all flex items-center space-x-2 shadow-sm"
+                  className="px-3.5 py-2.5 rounded-lg bg-[#B48A28] hover:bg-[#9E7719] text-white text-xs font-mono uppercase tracking-wider font-semibold transition-all flex items-center space-x-1.5 shadow-sm"
                 >
                   <Plus className="w-4 h-4" />
                   <span>Add Room</span>
@@ -1234,10 +1272,30 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
 
                 <button
                   onClick={() => setNewBookingModalOpen(true)}
-                  className="px-4 py-2.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-mono uppercase tracking-wider font-semibold transition-all flex items-center space-x-2 shadow-sm"
+                  className="px-3.5 py-2.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-mono uppercase tracking-wider font-semibold transition-all flex items-center space-x-1.5 shadow-sm"
                 >
                   <Lock className="w-4 h-4" />
-                  <span>+ Lock Dates / Record Booking</span>
+                  <span>+ Lock Dates</span>
+                </button>
+
+                {rooms.length > 0 && (
+                  <button
+                    onClick={() => setClearAllModalOpen(true)}
+                    className="px-3 py-2.5 rounded-lg border border-rose-300 hover:border-rose-400 hover:bg-rose-50 text-rose-700 text-xs font-mono uppercase tracking-wider font-semibold transition-all flex items-center space-x-1.5 shadow-2xs"
+                    title="Clear out all rooms from inventory to start fresh"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                    <span>Clear All Rooms</span>
+                  </button>
+                )}
+
+                <button
+                  onClick={handleResetToDefaults}
+                  className="px-3 py-2.5 rounded-lg border border-stone-300 hover:border-stone-400 hover:bg-stone-100 text-stone-600 hover:text-stone-900 text-xs font-mono uppercase tracking-wider font-medium transition-all flex items-center space-x-1.5 shadow-2xs"
+                  title="Reset inventory to default 8 suites across 4 floors + Top Penthouse"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 text-stone-500" />
+                  <span>Reset Suites</span>
                 </button>
               </div>
             </div>
@@ -1488,6 +1546,35 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
               <div className="py-20 text-center text-stone-500 font-mono text-sm">
                 Loading Polaris room inventory...
               </div>
+            ) : rooms.length === 0 ? (
+              // DEDICATED EMPTY INVENTORY STATE
+              <div className="py-16 sm:py-20 text-center rounded-2xl bg-white border-2 border-dashed border-stone-300 p-8 sm:p-12 shadow-sm space-y-5 max-w-2xl mx-auto my-6 animate-fadeIn">
+                <div className="w-16 h-16 rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center text-[#B48A28] mx-auto shadow-2xs">
+                  <Bed className="w-8 h-8" />
+                </div>
+                <div className="space-y-2">
+                  <h3 className="font-display text-2xl text-stone-900 font-medium">Hotel Inventory is Cleared</h3>
+                  <p className="text-sm text-stone-600 max-w-md mx-auto leading-relaxed">
+                    All rooms have been cleared out. You can now build your custom inventory by adding rooms according to your exact preference, or restore the default 8 suites at any time.
+                  </p>
+                </div>
+                <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+                  <button
+                    onClick={handleOpenAddRoom}
+                    className="w-full sm:w-auto px-6 py-3 rounded-xl bg-[#B48A28] hover:bg-[#9E7719] text-white text-xs font-mono uppercase tracking-wider font-bold transition-all flex items-center justify-center space-x-2 shadow-md hover:scale-[1.01]"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>+ Add Your First Custom Room</span>
+                  </button>
+                  <button
+                    onClick={handleResetToDefaults}
+                    className="w-full sm:w-auto px-5 py-3 rounded-xl border border-stone-300 hover:border-stone-400 bg-white hover:bg-stone-50 text-stone-700 text-xs font-mono uppercase tracking-wider font-semibold transition-all flex items-center justify-center space-x-2 shadow-2xs"
+                  >
+                    <RefreshCw className="w-4 h-4 text-stone-500" />
+                    <span>Restore Default 8 Suites</span>
+                  </button>
+                </div>
+              </div>
             ) : filteredRooms.length === 0 ? (
               <div className="py-16 text-center rounded-xl bg-white border border-stone-200 shadow-2xs space-y-3">
                 <p className="text-stone-600 text-sm">No rooms match your active search or filter.</p>
@@ -1514,7 +1601,7 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
             ) : groupByFloor && selectedFloorFilter === 'all' && !searchQuery.trim() ? (
               // GROUPED BY FLOOR VIEW
               <div className="space-y-10">
-                {FLOOR_CATEGORIES.map((cat) => {
+                {Array.from(new Set([...FLOOR_CATEGORIES, ...rooms.map((r) => r.floor).filter(Boolean)])).map((cat) => {
                   const categoryRooms = filteredRooms.filter((r) => r.floor === cat);
                   if (categoryRooms.length === 0) return null;
 
@@ -1620,6 +1707,7 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
       />
 
       {/* 4. Delete Room Confirmation Modal */}
+      {/* 4. Delete Single Room Modal */}
       <DeleteConfirmModal
         isOpen={deleteModalOpen}
         onClose={() => {
@@ -1628,6 +1716,14 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
         }}
         room={roomToDelete}
         onConfirmDelete={handleConfirmDelete}
+      />
+
+      {/* 4b. Clear All Rooms Confirmation Modal */}
+      <ClearAllRoomsModal
+        isOpen={clearAllModalOpen}
+        onClose={() => setClearAllModalOpen(false)}
+        totalRooms={rooms.length}
+        onConfirmClear={handleClearAllRooms}
       />
 
       {/* 5. New Booking / Block Modal */}
