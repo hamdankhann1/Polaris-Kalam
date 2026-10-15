@@ -19,6 +19,8 @@ import {
   Lock,
   AlertCircle,
   Layers,
+  Building2,
+  Check,
 } from "lucide-react";
 import { POLARIS_CONFIG } from "../../polarisConfig";
 import {
@@ -54,6 +56,7 @@ export default function BookingPage({
   // Booking Modal State (Operates on high-level Room Category)
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedFloorPreference, setSelectedFloorPreference] = useState("");
 
   // Form State
   const [guestName, setGuestName] = useState("");
@@ -172,6 +175,7 @@ export default function BookingPage({
 
   const handleOpenBooking = (category) => {
     setSelectedCategory(category);
+    setSelectedFloorPreference("");
     setIsSuccess(false);
 
     const catBooked = category.bookedDates || [];
@@ -232,11 +236,20 @@ export default function BookingPage({
       return;
     }
 
-    // Automatically allocate the first available suite of this category
-    const assignedRoom = available[0];
+    // Allocate suite matching guest's preferred floor if available, else allocate first available
+    let assignedRoom = null;
+    if (selectedFloorPreference) {
+      assignedRoom = available.find(
+        (r) => (r.floor || "").trim().toLowerCase() === selectedFloorPreference.trim().toLowerCase()
+      );
+    }
+    if (!assignedRoom) {
+      assignedRoom = available[0];
+    }
 
     setIsSubmitting(true);
     try {
+      const preferredFloorVal = selectedFloorPreference || assignedRoom.floor;
       await BookingRequestService.createRequest({
         guestName,
         phone,
@@ -246,13 +259,14 @@ export default function BookingPage({
         roomName: selectedCategory.name,
         tier: selectedCategory.tier,
         floor: assignedRoom.floor,
+        preferredFloor: preferredFloorVal,
         pricePKR: assignedRoom.pricePKR,
         checkIn,
         checkOut,
         guests,
         notes: notes
-          ? `${notes} [Category: ${selectedCategory.name} • Auto-Allocated Suite #${assignedRoom.roomNumber}]`
-          : `Category: ${selectedCategory.name} • Auto-Allocated Suite #${assignedRoom.roomNumber}`,
+          ? `${notes} [Category: ${selectedCategory.name} • Floor: ${assignedRoom.floor}${selectedFloorPreference ? ` (Preferred: ${selectedFloorPreference})` : ''} • Suite #${assignedRoom.roomNumber}]`
+          : `Category: ${selectedCategory.name} • Floor: ${assignedRoom.floor}${selectedFloorPreference ? ` (Preferred: ${selectedFloorPreference})` : ''} • Suite #${assignedRoom.roomNumber}`,
       });
 
       setIsSuccess(true);
@@ -528,11 +542,17 @@ export default function BookingPage({
                       <p className="text-xs sm:text-sm text-stone-600 mt-1.5 font-medium">
                         {cat.capacity}
                       </p>
-                      {cat.floors && cat.floors.length > 0 && cat.floors.some((f) => f && f !== cat.name) && (
+                      {cat.floors && cat.floors.length > 1 ? (
+                        <div className="flex items-center space-x-1.5 text-[11px] font-mono text-stone-600 mt-2 bg-stone-100 px-2.5 py-1 rounded-md border border-stone-200 w-fit">
+                          <Building2 className="w-3.5 h-3.5 text-[#B48A28] shrink-0" />
+                          <span className="font-semibold text-stone-800">Available on:</span>
+                          <span>{cat.floors.join(" • ")}</span>
+                        </div>
+                      ) : cat.floor ? (
                         <p className="text-[11px] font-mono text-stone-500 mt-1">
-                          Levels: {cat.floors.filter((f) => f && f !== cat.name).join(", ")}
+                          Level: {cat.floor}
                         </p>
-                      )}
+                      ) : null}
                     </div>
 
                     {/* Nightly Allocation Price Tag */}
@@ -642,7 +662,10 @@ export default function BookingPage({
                     . Your reservation inquiry for{" "}
                     <strong className="font-semibold text-stone-900">
                       {selectedCategory.name} ({selectedCategory.tier})
-                    </strong>{" "}
+                    </strong>
+                    {selectedFloorPreference ? (
+                      <span> on <strong className="font-semibold text-stone-900">{selectedFloorPreference}</strong></span>
+                    ) : ""}{" "}
                     has been received by our private concierge.
                   </p>
                 </div>
@@ -815,6 +838,77 @@ export default function BookingPage({
                       roomName={selectedCategory.name}
                     />
                   </div>
+
+                  {/* Preferred Floor / Level Selection (When Category Has Rooms Across Multiple Floors) */}
+                  {selectedCategory.floors && selectedCategory.floors.length > 1 && (
+                    <div className="pt-1 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="block text-xs sm:text-sm font-mono uppercase tracking-wider text-stone-800 font-bold flex items-center space-x-1.5">
+                          <Building2 className="w-4 h-4 text-[#B48A28]" />
+                          <span>Preferred Floor / Level</span>
+                        </label>
+                        <span className="text-[11px] font-mono text-stone-500">
+                          {selectedCategory.floors.length} levels available
+                        </span>
+                      </div>
+                      <p className="text-xs text-stone-600 font-normal">
+                        Suites in this category are located on multiple floors. Select your preference (e.g. higher panoramic view or lower garden level):
+                      </p>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedFloorPreference('')}
+                          className={`p-3 rounded-xl text-left border transition-all text-xs font-mono cursor-pointer ${
+                            !selectedFloorPreference
+                              ? 'bg-stone-900 text-white border-stone-900 font-bold shadow-xs'
+                              : 'bg-stone-50 text-stone-700 border-stone-200 hover:border-amber-300'
+                          }`}
+                        >
+                          <div className="font-semibold flex items-center justify-between">
+                            <span>No Preference (Best Available)</span>
+                            {!selectedFloorPreference && <Check className="w-3.5 h-3.5 text-amber-400" />}
+                          </div>
+                          <div className={`text-[10.5px] mt-0.5 ${!selectedFloorPreference ? 'text-stone-300' : 'text-stone-500'}`}>
+                            Automated first-available allocation
+                          </div>
+                        </button>
+
+                        {selectedCategory.floors.map((flr) => {
+                          const isSelected = selectedFloorPreference === flr;
+                          const availableOnThisFloor = availableRoomsForRange.filter(
+                            (r) => (r.floor || '').trim().toLowerCase() === flr.trim().toLowerCase()
+                          ).length;
+                          const totalOnThisFloor = selectedCategory.rooms.filter(
+                            (r) => (r.floor || '').trim().toLowerCase() === flr.trim().toLowerCase()
+                          ).length;
+
+                          return (
+                            <button
+                              key={flr}
+                              type="button"
+                              onClick={() => setSelectedFloorPreference(flr)}
+                              className={`p-3 rounded-xl text-left border transition-all text-xs font-mono cursor-pointer ${
+                                isSelected
+                                  ? 'bg-[#B48A28] text-white border-[#B48A28] font-bold shadow-xs'
+                                  : 'bg-stone-50 text-stone-700 border-stone-200 hover:border-amber-300'
+                              }`}
+                            >
+                              <div className="font-semibold flex items-center justify-between">
+                                <span>{flr}</span>
+                                {isSelected && <Check className="w-3.5 h-3.5 text-white" />}
+                              </div>
+                              <div className={`text-[10.5px] mt-0.5 ${isSelected ? 'text-amber-100' : 'text-stone-500'}`}>
+                                {checkIn && checkOut
+                                  ? `${availableOnThisFloor} of ${totalOnThisFloor} suites available`
+                                  : `${totalOnThisFloor} suites on this level`}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Number of Guests */}
                   <div>

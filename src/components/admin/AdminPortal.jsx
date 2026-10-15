@@ -28,10 +28,12 @@ import {
   Phone,
   Mail,
   Send,
-  RefreshCw
+  RefreshCw,
+  Building2
 } from 'lucide-react';
 import { RoomService } from '../../services/roomService';
 import { CategoryService } from '../../services/categoryService';
+import { FloorService } from '../../services/floorService';
 import { BookingRequestService } from '../../services/bookingRequestService';
 import { POLARIS_CONFIG } from '../../polarisConfig';
 import StatusChangeModal from './StatusChangeModal';
@@ -43,6 +45,7 @@ import DeleteConfirmModal from './DeleteConfirmModal';
 import ClearAllRoomsModal from './ClearAllRoomsModal';
 import AddBookingRequestModal from './AddBookingRequestModal';
 import CategoryManagerModal from './CategoryManagerModal';
+import FloorManagerModal from './FloorManagerModal';
 
 /**
  * =========================================================================
@@ -98,6 +101,10 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
   const [categoryManagerModalOpen, setCategoryManagerModalOpen] = useState(false);
   const [initialCategoryForAdd, setInitialCategoryForAdd] = useState(null);
 
+  // Floor Management State
+  const [customFloors, setCustomFloors] = useState([]);
+  const [floorManagerModalOpen, setFloorManagerModalOpen] = useState(false);
+
   // Other Modals
   const [newBookingModalOpen, setNewBookingModalOpen] = useState(false);
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
@@ -139,14 +146,16 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
   useEffect(() => {
     async function loadData() {
       setIsLoading(true);
-      const [roomsData, requestsData, categoriesData] = await Promise.all([
+      const [roomsData, requestsData, categoriesData, floorsData] = await Promise.all([
         RoomService.getRooms(),
         BookingRequestService.getRequests(),
-        CategoryService.getCategories()
+        CategoryService.getCategories(),
+        FloorService.getFloors()
       ]);
       setRooms(roomsData);
       setBookingRequests(requestsData);
       setCustomCategories(categoriesData);
+      setCustomFloors(floorsData);
       setDbStatus(BookingRequestService.getConnectionStatus());
       setIsLoading(false);
     }
@@ -163,6 +172,10 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
 
     const unsubCategories = CategoryService.subscribe((updatedCategories) => {
       setCustomCategories(updatedCategories);
+    });
+
+    const unsubFloors = FloorService.subscribe((updatedFloors) => {
+      setCustomFloors(updatedFloors);
     });
 
     // 2. Custom window event listeners for instantaneous cross-component updates
@@ -189,12 +202,14 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
     // 4. Tab focus and visibility sync (refreshes whenever staff switches tabs)
     const handleWindowFocus = async () => {
       try {
-        const [freshRooms, freshRequests] = await Promise.all([
+        const [freshRooms, freshRequests, freshFloors] = await Promise.all([
           RoomService.getRooms(),
-          BookingRequestService.getRequests()
+          BookingRequestService.getRequests(),
+          FloorService.getFloors()
         ]);
         setRooms(freshRooms);
         setBookingRequests(freshRequests);
+        setCustomFloors(freshFloors);
         setDbStatus(BookingRequestService.getConnectionStatus());
       } catch (err) {
         // silent
@@ -212,6 +227,7 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
       unsubRooms();
       unsubRequests();
       unsubCategories();
+      unsubFloors();
       clearInterval(pollInterval);
       window.removeEventListener('polaris:booking-update', handleCustomBookingUpdate);
       window.removeEventListener('polaris:room-update', handleCustomRoomUpdate);
@@ -1178,6 +1194,11 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
                           <div className="flex flex-wrap items-center gap-3 text-xs text-stone-600">
                             <span className="px-2.5 py-1 rounded bg-stone-100 border border-stone-200 font-mono text-[#B48A28] font-semibold">
                               Room #{req.roomNumber} — {req.roomName} ({req.floor})
+                              {req.preferredFloor && req.preferredFloor !== req.floor && (
+                                <span className="text-amber-800 font-bold ml-1.5">
+                                  • Preferred: {req.preferredFloor}
+                                </span>
+                              )}
                             </span>
                             <span className="text-stone-300">•</span>
                             <span className="font-mono text-stone-900 font-medium">
@@ -1463,13 +1484,21 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
                   <span>Room Categories ({activeCategories.length}):</span>
                 </span>
 
-                <div className="flex items-center space-x-3">
+                <div className="flex items-center space-x-2">
                   <button
                     onClick={() => setCategoryManagerModalOpen(true)}
                     className="text-[11px] font-mono text-[#B48A28] hover:text-[#9E7719] font-semibold flex items-center space-x-1 px-2.5 py-1 rounded bg-amber-50 border border-amber-200 hover:bg-amber-100 transition-colors"
                   >
                     <Plus className="w-3 h-3" />
                     <span>Manage Categories</span>
+                  </button>
+
+                  <button
+                    onClick={() => setFloorManagerModalOpen(true)}
+                    className="text-[11px] font-mono text-stone-700 hover:text-stone-900 font-semibold flex items-center space-x-1 px-2.5 py-1 rounded bg-stone-100 border border-stone-200 hover:bg-stone-200 transition-colors"
+                  >
+                    <Building2 className="w-3 h-3 text-[#B48A28]" />
+                    <span>Manage Floors</span>
                   </button>
 
                   <button
@@ -1907,6 +1936,18 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
         onCategoryUpdated={async () => {
           const fresh = await CategoryService.getCategories(true);
           setCustomCategories(fresh);
+        }}
+      />
+
+      {/* Floor Manager Modal */}
+      <FloorManagerModal
+        isOpen={floorManagerModalOpen}
+        onClose={() => setFloorManagerModalOpen(false)}
+        floors={customFloors}
+        rooms={rooms}
+        onFloorUpdated={async () => {
+          const fresh = await FloorService.getFloors(true);
+          setCustomFloors(fresh);
         }}
       />
 

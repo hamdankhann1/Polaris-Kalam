@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Bed, DollarSign, Layers, Tag, Users, Sparkles, ArrowRight, Plus, Check } from 'lucide-react';
 import { CategoryService } from '../../services/categoryService';
+import { FloorService } from '../../services/floorService';
 
 /**
  * =========================================================================
@@ -38,6 +39,12 @@ export default function RoomFormModal({ isOpen, onClose, roomToEdit = null, init
   const [newCategoryName, setNewCategoryName] = useState('');
   const [isCreatingCat, setIsCreatingCat] = useState(false);
 
+  // Custom Floors state & inline creation
+  const [customFloors, setCustomFloors] = useState([]);
+  const [isAddingFloor, setIsAddingFloor] = useState(false);
+  const [newFloorName, setNewFloorName] = useState('');
+  const [isCreatingFloor, setIsCreatingFloor] = useState(false);
+
   useEffect(() => {
     // Load categories from database
     CategoryService.getCategories().then((cats) => {
@@ -46,11 +53,25 @@ export default function RoomFormModal({ isOpen, onClose, roomToEdit = null, init
       }
     });
 
-    const unsubscribe = CategoryService.subscribe((cats) => {
+    const unsubscribeCats = CategoryService.subscribe((cats) => {
       setCustomCategories(cats);
     });
 
-    return () => unsubscribe();
+    // Load floors from database
+    FloorService.getFloors().then((flrs) => {
+      if (Array.isArray(flrs)) {
+        setCustomFloors(flrs);
+      }
+    });
+
+    const unsubscribeFloors = FloorService.subscribe((flrs) => {
+      setCustomFloors(flrs);
+    });
+
+    return () => {
+      unsubscribeCats();
+      unsubscribeFloors();
+    };
   }, [isOpen]);
 
   useEffect(() => {
@@ -74,7 +95,7 @@ export default function RoomFormModal({ isOpen, onClose, roomToEdit = null, init
       // Default to initialCategory or first category if available
       const defaultCat = (initialCategory || customCategories[0]?.name || '').trim();
       setCategory(defaultCat);
-      setFloor('');
+      setFloor(customFloors[0]?.name || '');
       setPricePKR(45000);
       setCapacity('2 Guests • 1 King Bed');
       setAmenities('Panoramic Mountain View, Heated Floors, Private Bath');
@@ -82,10 +103,12 @@ export default function RoomFormModal({ isOpen, onClose, roomToEdit = null, init
     }
     setIsAddingCategory(false);
     setNewCategoryName('');
+    setIsAddingFloor(false);
+    setNewFloorName('');
     setError('');
   }, [roomToEdit, isOpen, initialCategory]);
 
-  // Keep category synchronized as soon as customCategories resolve asynchronously
+  // Keep category and floor synchronized as soon as customCategories/customFloors resolve asynchronously
   useEffect(() => {
     if (!roomToEdit) {
       if (initialCategory && customCategories.some((c) => c.name === initialCategory)) {
@@ -93,8 +116,12 @@ export default function RoomFormModal({ isOpen, onClose, roomToEdit = null, init
       } else if (!category && customCategories.length > 0) {
         setCategory(customCategories[0].name);
       }
+
+      if (!floor && customFloors.length > 0) {
+        setFloor(customFloors[0].name);
+      }
     }
-  }, [customCategories, initialCategory, roomToEdit]);
+  }, [customCategories, customFloors, initialCategory, roomToEdit]);
 
   const handleQuickAddCategory = async (e) => {
     e?.preventDefault();
@@ -116,6 +143,29 @@ export default function RoomFormModal({ isOpen, onClose, roomToEdit = null, init
       setError(catErr.message || 'Failed to save new category.');
     } finally {
       setIsCreatingCat(false);
+    }
+  };
+
+  const handleQuickAddFloor = async (e) => {
+    e?.preventDefault();
+    if (!newFloorName.trim()) {
+      setError('Please enter a name for the new floor.');
+      return;
+    }
+
+    setIsCreatingFloor(true);
+    setError('');
+    try {
+      const created = await FloorService.addFloor(newFloorName.trim());
+      const flrName = created?.name || newFloorName.trim();
+      setFloor(flrName);
+      setNewFloorName('');
+      setIsAddingFloor(false);
+      setError('');
+    } catch (flrErr) {
+      setError(flrErr.message || 'Failed to save new floor.');
+    } finally {
+      setIsCreatingFloor(false);
     }
   };
 
@@ -150,7 +200,7 @@ export default function RoomFormModal({ isOpen, onClose, roomToEdit = null, init
         name: name.trim(),
         category: selectedCat,
         tier: selectedCat, // Keep in sync for compatibility
-        floor: floor.trim() || selectedCat,
+        floor: (floor || customFloors[0]?.name || selectedCat || 'Floor 1').trim(),
         pricePKR: Number(pricePKR),
         capacity: capacity.trim(),
         amenities: amenities.split(',').map((s) => s.trim()).filter(Boolean),
@@ -307,16 +357,65 @@ export default function RoomFormModal({ isOpen, onClose, roomToEdit = null, init
           {/* Row 3: Floor / Level & Nightly Price */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-[11px] font-mono uppercase tracking-wider text-stone-600 mb-1.5 font-medium">
-                Floor / Level (Optional)
-              </label>
-              <input
-                type="text"
-                value={floor}
-                onChange={(e) => setFloor(e.target.value)}
-                placeholder="e.g. Floor 3, Ground Deck, Chalet Wing"
-                className="w-full bg-stone-50 border border-stone-300 rounded-lg px-3.5 py-2.5 text-sm text-stone-900 focus:outline-none focus:border-amber-600 focus:bg-white focus:ring-1 focus:ring-amber-500 transition-colors font-medium"
-              />
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-[11px] font-mono uppercase tracking-wider text-stone-600 font-medium">
+                  Floor / Level
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setIsAddingFloor(!isAddingFloor)}
+                  className="text-[10px] font-mono text-[#B48A28] hover:text-[#8A661C] underline font-medium"
+                >
+                  {isAddingFloor ? 'Select Existing' : '+ New Floor'}
+                </button>
+              </div>
+
+              {isAddingFloor ? (
+                <div className="flex items-center space-x-1.5">
+                  <input
+                    type="text"
+                    value={newFloorName}
+                    onChange={(e) => setNewFloorName(e.target.value)}
+                    placeholder="e.g. 4th Floor Panoramic"
+                    className="flex-1 bg-stone-50 border border-amber-300 rounded-lg px-3 py-2 text-sm text-stone-900 focus:outline-none focus:border-amber-600 focus:bg-white font-medium"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleQuickAddFloor}
+                    disabled={isCreatingFloor}
+                    className="px-3 py-2 rounded-lg bg-[#B48A28] hover:bg-[#9E7719] text-white text-xs font-mono font-bold transition-colors shrink-0"
+                  >
+                    {isCreatingFloor ? '...' : 'Add'}
+                  </button>
+                </div>
+              ) : (
+                <select
+                  value={floor || (customFloors[0]?.name || '')}
+                  onChange={(e) => {
+                    if (e.target.value === '__CREATE_NEW_FLOOR__') {
+                      setIsAddingFloor(true);
+                    } else {
+                      setFloor(e.target.value);
+                    }
+                  }}
+                  className="w-full bg-stone-50 border border-stone-300 rounded-lg px-3.5 py-2.5 text-sm text-stone-900 focus:outline-none focus:border-amber-600 focus:bg-white focus:ring-1 focus:ring-amber-500 transition-colors cursor-pointer"
+                >
+                  {floor && !customFloors.some((f) => f.name === floor) && (
+                    <option value={floor}>{floor}</option>
+                  )}
+                  {customFloors.length === 0 && !floor && (
+                    <option value="">-- No floors defined yet --</option>
+                  )}
+                  {customFloors.map((flr) => (
+                    <option key={flr.id || flr.name} value={flr.name}>
+                      {flr.name}
+                    </option>
+                  ))}
+                  <option value="__CREATE_NEW_FLOOR__" className="text-[#B48A28] font-bold">
+                    + Create New Floor...
+                  </option>
+                </select>
+              )}
             </div>
 
             <div>

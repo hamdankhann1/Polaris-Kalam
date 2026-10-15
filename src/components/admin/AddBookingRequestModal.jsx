@@ -76,6 +76,7 @@ export default function AddBookingRequestModal({ isOpen, onClose, rooms, onSaveR
         roomName: selectedRoom.name,
         tier: selectedRoom.tier,
         floor: selectedRoom.floor,
+        preferredFloor: selectedRoom.floor,
         pricePKR: selectedRoom.pricePKR,
         checkIn,
         checkOut,

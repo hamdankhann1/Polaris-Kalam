@@ -189,6 +189,7 @@ export const BookingRequestService = {
       roomName: data.roomName || 'Polaris Suite',
       tier: data.tier || 'Executive Suite',
       floor: data.floor || 'Floor 1',
+      preferredFloor: (data.preferredFloor || data.floor || '').trim(),
       pricePKR: Number(data.pricePKR) || 45000,
       checkIn: data.checkIn || new Date().toISOString().split('T')[0],
       checkOut: data.checkOut || new Date(Date.now() + 86400000 * 2).toISOString().split('T')[0],
@@ -262,12 +263,16 @@ export const BookingRequestService = {
       cleanPhone = '92' + cleanPhone.substring(1);
     }
 
+    const floorLine = request.preferredFloor && request.preferredFloor !== request.floor
+      ? `• Suite: Room #${request.roomNumber} — ${request.roomName} (${request.floor}) [Preferred: ${request.preferredFloor}]`
+      : `• Suite: Room #${request.roomNumber} — ${request.roomName} (${request.floor})`;
+
     const message = `Hello ${request.guestName},
 
 Warm greetings from POLARIS Hotel & Sanctuary, Kalam Valley.
 
 We have received your reservation request for:
-• Suite: Room #${request.roomNumber} — ${request.roomName} (${request.floor})
+${floorLine}
 • Stay Dates: ${request.checkIn} to ${request.checkOut} (${request.nights} Nights)
 • Guests: ${request.guests}
 • Nightly Rate: PKR ${request.pricePKR.toLocaleString()}

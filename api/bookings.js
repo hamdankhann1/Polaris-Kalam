@@ -247,6 +247,7 @@ export default async function handler(req, res) {
         roomName: body.roomName || 'Polaris Suite',
         tier: body.tier || 'Executive Suite',
         floor: body.floor || 'Floor 1',
+        preferredFloor: (body.preferredFloor || body.floor || '').trim(),
         pricePKR: Number(body.pricePKR) || 45000,
         checkIn: body.checkIn || new Date().toISOString().split('T')[0],
         checkOut: body.checkOut || new Date(Date.now() + 86400000 * 2).toISOString().split('T')[0],
