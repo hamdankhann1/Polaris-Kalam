@@ -96,6 +96,7 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
   // Category Management State
   const [customCategories, setCustomCategories] = useState([]);
   const [categoryManagerModalOpen, setCategoryManagerModalOpen] = useState(false);
+  const [initialCategoryForAdd, setInitialCategoryForAdd] = useState(null);
 
   // Other Modals
   const [newBookingModalOpen, setNewBookingModalOpen] = useState(false);
@@ -358,8 +359,12 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
   };
 
   // --- ADD / EDIT ROOM HANDLERS ---
-  const handleOpenAddRoom = () => {
+  const handleOpenAddRoom = (cat = null) => {
     setRoomToEdit(null);
+    const targetCat = (typeof cat === 'string' && cat.trim())
+      ? cat.trim()
+      : (selectedFloorFilter !== 'all' ? selectedFloorFilter : null);
+    setInitialCategoryForAdd(targetCat);
     setRoomFormModalOpen(true);
   };
 
@@ -1653,7 +1658,7 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
                         </div>
 
                         <button
-                          onClick={handleOpenAddRoom}
+                          onClick={() => handleOpenAddRoom(cat)}
                           className="text-[11px] font-mono text-stone-500 hover:text-[#B48A28] transition-colors flex items-center space-x-1"
                         >
                           <Plus className="w-3 h-3" />
@@ -1710,8 +1715,10 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
         onClose={() => {
           setRoomFormModalOpen(false);
           setRoomToEdit(null);
+          setInitialCategoryForAdd(null);
         }}
         roomToEdit={roomToEdit}
+        initialCategory={initialCategoryForAdd}
         onSave={handleSaveRoom}
       />
 

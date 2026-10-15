@@ -16,14 +16,14 @@ import { CategoryService } from '../../services/categoryService';
  * - Guest Capacity & Bed Type
  * - Architectural Amenities
  */
-export default function RoomFormModal({ isOpen, onClose, roomToEdit = null, onSave }) {
+export default function RoomFormModal({ isOpen, onClose, roomToEdit = null, initialCategory = null, onSave }) {
   if (!isOpen) return null;
 
   const isEditing = Boolean(roomToEdit);
 
   const [roomNumber, setRoomNumber] = useState('');
   const [name, setName] = useState('');
-  const [category, setCategory] = useState('');
+  const [category, setCategory] = useState(initialCategory || '');
   const [floor, setFloor] = useState('');
   const [pricePKR, setPricePKR] = useState(45000);
   const [capacity, setCapacity] = useState('2 Guests • 1 King Bed');
@@ -57,7 +57,7 @@ export default function RoomFormModal({ isOpen, onClose, roomToEdit = null, onSa
     if (roomToEdit) {
       setRoomNumber(roomToEdit.roomNumber || '');
       setName(roomToEdit.name || '');
-      const existingCategory = roomToEdit.category || roomToEdit.tier || roomToEdit.floor || '';
+      const existingCategory = (roomToEdit.category || roomToEdit.tier || roomToEdit.floor || '').trim();
       setCategory(existingCategory);
       setFloor(roomToEdit.floor || '');
       setPricePKR(roomToEdit.pricePKR || 45000);
@@ -71,8 +71,9 @@ export default function RoomFormModal({ isOpen, onClose, roomToEdit = null, onSa
     } else {
       setRoomNumber('');
       setName('');
-      // Default to first category if available
-      setCategory(customCategories[0]?.name || '');
+      // Default to initialCategory or first category if available
+      const defaultCat = (initialCategory || customCategories[0]?.name || '').trim();
+      setCategory(defaultCat);
       setFloor('');
       setPricePKR(45000);
       setCapacity('2 Guests • 1 King Bed');
@@ -82,7 +83,18 @@ export default function RoomFormModal({ isOpen, onClose, roomToEdit = null, onSa
     setIsAddingCategory(false);
     setNewCategoryName('');
     setError('');
-  }, [roomToEdit, isOpen]);
+  }, [roomToEdit, isOpen, initialCategory]);
+
+  // Keep category synchronized as soon as customCategories resolve asynchronously
+  useEffect(() => {
+    if (!roomToEdit) {
+      if (initialCategory && customCategories.some((c) => c.name === initialCategory)) {
+        setCategory(initialCategory);
+      } else if (!category && customCategories.length > 0) {
+        setCategory(customCategories[0].name);
+      }
+    }
+  }, [customCategories, initialCategory, roomToEdit]);
 
   const handleQuickAddCategory = async (e) => {
     e?.preventDefault();
@@ -95,9 +107,11 @@ export default function RoomFormModal({ isOpen, onClose, roomToEdit = null, onSa
     setError('');
     try {
       const created = await CategoryService.addCategory(newCategoryName.trim());
-      setCategory(created.name);
+      const catName = created?.name || newCategoryName.trim();
+      setCategory(catName);
       setNewCategoryName('');
       setIsAddingCategory(false);
+      setError('');
     } catch (catErr) {
       setError(catErr.message || 'Failed to save new category.');
     } finally {
@@ -117,10 +131,13 @@ export default function RoomFormModal({ isOpen, onClose, roomToEdit = null, onSa
       setError('Please provide a Room or Suite Title.');
       return;
     }
-    if (!category.trim()) {
+
+    const selectedCat = (category || initialCategory || customCategories[0]?.name || '').trim();
+    if (!selectedCat) {
       setError('Please select or create a Room Category.');
       return;
     }
+
     if (isNaN(Number(pricePKR)) || Number(pricePKR) <= 0) {
       setError('Please provide a valid positive nightly price (PKR).');
       return;
@@ -128,7 +145,6 @@ export default function RoomFormModal({ isOpen, onClose, roomToEdit = null, onSa
 
     setIsSubmitting(true);
     try {
-      const selectedCat = category.trim();
       const data = {
         roomNumber: roomNumber.trim(),
         name: name.trim(),
@@ -243,12 +259,13 @@ export default function RoomFormModal({ isOpen, onClose, roomToEdit = null, onSa
                 </div>
               ) : (
                 <select
-                  value={category}
+                  value={category || (customCategories[0]?.name || '')}
                   onChange={(e) => {
                     if (e.target.value === '__CREATE_NEW__') {
                       setIsAddingCategory(true);
                     } else {
                       setCategory(e.target.value);
+                      setError('');
                     }
                   }}
                   className="w-full bg-stone-50 border border-stone-300 rounded-lg px-3.5 py-2.5 text-sm text-stone-900 focus:outline-none focus:border-amber-600 focus:bg-white focus:ring-1 focus:ring-amber-500 transition-colors cursor-pointer"
