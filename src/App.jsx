@@ -42,11 +42,15 @@ export default function App() {
         return 'booking';
       }
 
-      // Check for secret admin link
+      // Check for secret admin link (supports /admintopsecretmanage, /admintopsecretpage, /cms, etc.)
       if (
-        hash === '#admintopsecretmanage' ||
-        path === '/admintopsecretmanage' ||
-        path.endsWith('/admintopsecretmanage')
+        hash.includes('admintopsecret') ||
+        hash.includes('cms') ||
+        path.includes('admintopsecret') ||
+        path === '/cms' ||
+        path.endsWith('/cms') ||
+        search.includes('cms=true') ||
+        search.includes('admin=true')
       ) {
         return 'admin';
       }
@@ -83,11 +87,15 @@ export default function App() {
         return;
       }
 
-      // 2. Check for secret admin link
+      // 2. Check for secret admin link (supports /admintopsecretmanage, /admintopsecretpage, /cms, etc.)
       if (
-        hash === '#admintopsecretmanage' ||
-        path === '/admintopsecretmanage' ||
-        path.endsWith('/admintopsecretmanage')
+        hash.includes('admintopsecret') ||
+        hash.includes('cms') ||
+        path.includes('admintopsecret') ||
+        path === '/cms' ||
+        path.endsWith('/cms') ||
+        search.includes('cms=true') ||
+        search.includes('admin=true')
       ) {
         setCurrentView('admin');
         return;
