@@ -1602,16 +1602,32 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
             </div>
 
             <div className="mt-4 space-y-4 text-xs font-sans text-stone-700 leading-relaxed">
-              <div className="p-3 rounded-xl bg-stone-50 border border-stone-200 font-mono text-[11px] space-y-1">
-                <div className="flex justify-between">
-                  <span className="text-stone-500">Current Storage Backend:</span>
+              <div className="p-3 rounded-xl bg-stone-50 border border-stone-200 font-mono text-[11px] space-y-1.5">
+                <div className="flex justify-between items-center">
+                  <span className="text-stone-500">Storage Engine:</span>
                   <span className={`font-bold ${dbStatus.dbConnected ? 'text-emerald-700' : 'text-amber-800'}`}>
                     {dbStatus.source === 'mongodb' ? 'MongoDB Atlas (Persistent Cloud)' : 'In-Memory (Ephemeral Serverless)'}
                   </span>
                 </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-stone-500">Environment Variable:</span>
+                  <span className={`font-bold ${dbStatus.envDetected ? 'text-emerald-700' : 'text-rose-700'}`}>
+                    {dbStatus.envDetected ? `✓ Detected (${dbStatus.envKey || 'MONGODB_URI'})` : '✗ Not Detected by Vercel'}
+                  </span>
+                </div>
                 {dbStatus.dbError && (
-                  <div className="text-rose-600 pt-1 text-[10.5px]">
-                    Error: {dbStatus.dbError}
+                  <div className="p-2 rounded bg-rose-50 border border-rose-200 text-rose-800 text-[10.5px] space-y-1">
+                    <div className="font-semibold text-rose-900">Diagnosis:</div>
+                    <div className="break-all">{dbStatus.dbError}</div>
+                    {dbStatus.dbError.toLowerCase().includes('timed out') || dbStatus.dbError.toLowerCase().includes('server selection') ? (
+                      <div className="text-stone-700 font-sans pt-1">
+                        💡 <strong>Atlas Firewall Block:</strong> In MongoDB Atlas, go to <strong>Network Access</strong> → <strong>Add IP Address</strong> → select <strong>Allow Access from Anywhere (0.0.0.0/0)</strong>. Vercel serverless IPs change dynamically!
+                      </div>
+                    ) : dbStatus.dbError.toLowerCase().includes('auth') ? (
+                      <div className="text-stone-700 font-sans pt-1">
+                        💡 <strong>Auth Failed:</strong> Check your database username & password in the connection URI. If your password contains special symbols (@, #, ?, /), percent-encode them.
+                      </div>
+                    ) : null}
                   </div>
                 )}
               </div>
@@ -1619,22 +1635,23 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
               {!dbStatus.dbConnected ? (
                 <div className="space-y-3">
                   <p className="font-medium text-stone-800">
-                    Why is this happening?
-                  </p>
-                  <p>
-                    On Vercel, serverless lambdas run in isolated containers. Without a cloud database connection, any changes made on your laptop or phone are saved to temporary memory that gets discarded when containers spin down or switch devices.
+                    Why isn't the environment variable working?
                   </p>
                   <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 space-y-2">
-                    <p className="font-semibold text-amber-950">To connect MongoDB Atlas permanently:</p>
-                    <ol className="list-decimal list-inside space-y-1.5 pl-1 font-mono text-[10.5px]">
-                      <li>Open your <strong>Vercel Project Dashboard</strong> → <strong>Settings</strong> → <strong>Environment Variables</strong>.</li>
-                      <li>Add key <strong>MONGODB_URI</strong> with your MongoDB Atlas connection string:
-                        <code className="block mt-1 p-1 bg-white rounded border border-amber-300 text-[10px] break-all">
-                          mongodb+srv://username:password@cluster0.xxx.mongodb.net/polaris_hotel?retryWrites=true&w=majority
-                        </code>
+                    <p className="font-semibold text-amber-950">Quick Checklist to fix it right now:</p>
+                    <ol className="list-decimal list-inside space-y-2 pl-1 font-mono text-[10.5px]">
+                      <li>
+                        <strong>Redeploy required on Vercel:</strong> Vercel <em>never</em> injects newly added environment variables into existing deployments. Go to <strong>Deployments</strong> → click the 3 dots on your latest deployment → click <strong>Redeploy</strong>.
                       </li>
-                      <li>In <strong>MongoDB Atlas</strong> → <strong>Network Access</strong>: ensure <code className="bg-white px-1 py-0.5 rounded border border-amber-300">0.0.0.0/0</code> (Allow access from anywhere) is added so Vercel can reach it.</li>
-                      <li>Redeploy on Vercel. Once deployed, the badge turns green and all devices sync in real-time!</li>
+                      <li>
+                        <strong>MongoDB Atlas Network Access (Firewall):</strong> In MongoDB Atlas dashboard → <strong>Network Access</strong>, ensure <code className="bg-white px-1 py-0.5 rounded border border-amber-300">0.0.0.0/0</code> (Allow Access From Anywhere) is active. Without this, Atlas drops Vercel's connection.
+                      </li>
+                      <li>
+                        <strong>Production Environment Checked:</strong> In Vercel Project Settings → Environment Variables, verify that the <strong>Production</strong> checkbox was enabled.
+                      </li>
+                      <li>
+                        <strong>Password Encoding:</strong> If your MongoDB password has special characters like <code className="bg-white px-1 py-0.5 rounded border border-amber-300">@</code> or <code className="bg-white px-1 py-0.5 rounded border border-amber-300">#</code>, encode them (e.g. <code className="bg-white px-1 py-0.5 rounded border border-amber-300">@</code> → <code className="bg-white px-1 py-0.5 rounded border border-amber-300">%40</code>).
+                      </li>
                     </ol>
                   </div>
                 </div>

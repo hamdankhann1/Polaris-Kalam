@@ -108,6 +108,8 @@ export const BookingRequestService = {
           dbConnected: Boolean(json.dbConnected || json.source === 'mongodb'),
           source: json.source || (json.dbConnected ? 'mongodb' : 'memory'),
           dbError: json.dbError || null,
+          envDetected: Boolean(json.envDetected),
+          envKey: json.envKey || null,
           lastSyncedAt: new Date().toISOString()
         };
 

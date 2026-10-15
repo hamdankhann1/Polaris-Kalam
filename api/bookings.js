@@ -11,6 +11,8 @@
  * - In-memory / serverless fallback (when MONGODB_URI is not yet configured)
  */
 
+import { MongoClient } from 'mongodb';
+
 let cachedClient = null;
 let cachedDb = null;
 let lastDbError = null;
@@ -22,16 +24,35 @@ const DEMO_REQUEST_IDS = ['req-101', 'req-102'];
 // Fallback in-memory storage for serverless runtime
 let fallbackBookings = [];
 
+export function getMongoConfig() {
+  const candidates = [
+    { name: 'MONGODB_URI', val: process.env.MONGODB_URI },
+    { name: 'MONGO_URI', val: process.env.MONGO_URI },
+    { name: 'MONGODB_URL', val: process.env.MONGODB_URL },
+    { name: 'DATABASE_URL', val: process.env.DATABASE_URL },
+    { name: 'VITE_MONGODB_URI', val: process.env.VITE_MONGODB_URI }
+  ];
+
+  for (const c of candidates) {
+    if (c.val && typeof c.val === 'string' && c.val.trim().length > 0) {
+      const cleanUri = c.val.trim().replace(/^["']|["']$/g, '');
+      return { uri: cleanUri, keyName: c.name, hasEnv: true };
+    }
+  }
+
+  return { uri: null, keyName: null, hasEnv: false };
+}
+
 async function getDatabase() {
-  const uri = process.env.MONGODB_URI;
-  if (!uri) {
-    return { db: null, error: 'MONGODB_URI is not set in environment variables' };
+  const config = getMongoConfig();
+  if (!config.hasEnv || !config.uri) {
+    return { db: null, error: 'No MongoDB URI found in environment variables (checked MONGODB_URI, MONGO_URI, DATABASE_URL, MONGODB_URL)', config };
   }
 
   if (cachedClient && cachedDb) {
     try {
       await cachedDb.command({ ping: 1 });
-      return { db: cachedDb, error: null };
+      return { db: cachedDb, error: null, config };
     } catch (e) {
       cachedClient = null;
       cachedDb = null;
@@ -39,22 +60,22 @@ async function getDatabase() {
   }
 
   try {
-    const { MongoClient } = await import('mongodb');
-    const client = new MongoClient(uri, {
+    const client = new MongoClient(config.uri, {
       maxPoolSize: 10,
       serverSelectionTimeoutMS: 5000,
-      connectTimeoutMS: 5000
+      connectTimeoutMS: 5000,
+      socketTimeoutMS: 10000
     });
     await client.connect();
     const db = client.db(process.env.MONGODB_DB_NAME || 'polaris_hotel');
     cachedClient = client;
     cachedDb = db;
     lastDbError = null;
-    return { db, error: null };
+    return { db, error: null, config };
   } catch (err) {
     console.error('MongoDB connection error in /api/bookings:', err);
     lastDbError = err.message;
-    return { db: null, error: err.message };
+    return { db: null, error: err.message, config };
   }
 }
 
@@ -73,7 +94,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { db, error: dbError } = await getDatabase();
+    const { db, error: dbError, config: mongoConfig } = await getDatabase();
     const collection = db ? db.collection('booking_requests') : null;
 
     // -----------------------------------------------------------------------
@@ -108,7 +129,9 @@ export default async function handler(req, res) {
           success: true,
           data: sanitized,
           source: 'mongodb',
-          dbConnected: true
+          dbConnected: true,
+          envDetected: !!mongoConfig?.hasEnv,
+          envKey: mongoConfig?.keyName || null
         });
       }
 
@@ -131,6 +154,8 @@ export default async function handler(req, res) {
         data: fallbackBookings,
         source: 'memory',
         dbConnected: false,
+        envDetected: !!mongoConfig?.hasEnv,
+        envKey: mongoConfig?.keyName || null,
         dbError: dbError || lastDbError
       });
     }
