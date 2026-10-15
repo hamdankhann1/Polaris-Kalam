@@ -142,6 +142,14 @@ export default async function handler(req, res) {
     const { db, error: dbError, config: mongoConfig } = await getDatabase();
     const collection = db ? db.collection('booking_requests') : null;
 
+    // Database index optimization
+    if (collection) {
+      try {
+        collection.createIndex({ createdAt: -1 }).catch(() => {});
+        collection.createIndex({ status: 1, checkOut: 1 }).catch(() => {});
+      } catch (e) {}
+    }
+
     // -----------------------------------------------------------------------
     // GET: Fetch all booking requests
     // -----------------------------------------------------------------------
@@ -150,19 +158,23 @@ export default async function handler(req, res) {
         // Safe 3-month cleanup:
         // STRICT SAFETY RULES:
         // 1. NEVER delete 'pending', 'approved', or 'contacted' requests!
-        // 2. Only declutter 'declined', 'cancelled', or 'completed' requests
-        // 3. AND checkOut must be a valid date string that is strictly older than 90 days ago
-        // 4. NEVER match or delete by guest name!
+        // 2. Only declutter unwanted records ('declined', 'cancelled', or 'completed')
+        // 3. AND record must be strictly older than 3 months (90 days)
+        // 4. Room details and active inventory are completely protected in a separate collection.
         const ninetyDaysAgoYMD = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        const ninetyDaysAgoISO = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
 
         try {
           // Remove legacy placeholder IDs if present
           await collection.deleteMany({ id: { $in: DEMO_REQUEST_IDS } });
 
-          // Safe declutter of archived / completed requests past 90 days
+          // Safe declutter of unwanted, non-active requests older than 3 months (90 days)
           await collection.deleteMany({
             status: { $in: ['declined', 'cancelled', 'completed'] },
-            checkOut: { $exists: true, $type: 'string', $regex: /^\d{4}-\d{2}-\d{2}/, $lt: ninetyDaysAgoYMD }
+            $or: [
+              { checkOut: { $exists: true, $type: 'string', $regex: /^\d{4}-\d{2}-\d{2}/, $lt: ninetyDaysAgoYMD } },
+              { createdAt: { $exists: true, $lt: ninetyDaysAgoISO } }
+            ]
           });
         } catch (e) {
           console.warn('MongoDB 3-month purge warning in /api/bookings:', e.message);

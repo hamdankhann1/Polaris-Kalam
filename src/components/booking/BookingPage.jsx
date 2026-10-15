@@ -80,7 +80,21 @@ export default function BookingPage({
       setBookingRequests(updatedReqs);
     });
 
-    // Window focus refresh for multi-tab booking coordination
+    // 1. Cross-component custom event listeners (instantaneous sync within same window)
+    const handleRoomUpdate = (e) => {
+      if (e.detail && Array.isArray(e.detail)) {
+        setRooms([...e.detail]);
+      }
+    };
+    const handleBookingUpdate = (e) => {
+      if (e.detail && Array.isArray(e.detail)) {
+        setBookingRequests([...e.detail]);
+      }
+    };
+    window.addEventListener("polaris:room-update", handleRoomUpdate);
+    window.addEventListener("polaris:booking-update", handleBookingUpdate);
+
+    // 2. Window focus & visibility refresh for multi-tab booking coordination
     const handleFocus = async () => {
       try {
         const [freshRooms, freshReqs] = await Promise.all([
@@ -94,13 +108,40 @@ export default function BookingPage({
       }
     };
     window.addEventListener("focus", handleFocus);
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        handleFocus();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    // 3. Active 3-second database polling (syncs room status/locks across phones & laptops live)
+    const pollInterval = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        handleFocus();
+      }
+    }, 3000);
 
     return () => {
       unsubRooms();
       unsubReqs();
+      clearInterval(pollInterval);
       window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("polaris:room-update", handleRoomUpdate);
+      window.removeEventListener("polaris:booking-update", handleBookingUpdate);
     };
   }, []);
+
+  // Keep selectedRoom in sync with latest live room data from database
+  useEffect(() => {
+    if (selectedRoom) {
+      const live = rooms.find((r) => r.id === selectedRoom.id);
+      if (live && JSON.stringify(live) !== JSON.stringify(selectedRoom)) {
+        setSelectedRoom(live);
+      }
+    }
+  }, [rooms, selectedRoom]);
 
   // Compute all booked dates for the currently selected room
   const bookedDates = useMemo(() => {

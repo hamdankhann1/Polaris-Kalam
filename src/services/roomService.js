@@ -261,11 +261,17 @@ const listeners = new Set();
 function notifyListeners(rooms) {
   listeners.forEach((listener) => {
     try {
-      listener(rooms);
+      listener([...rooms]);
     } catch (e) {
       console.error('Error notifying room listener:', e);
     }
   });
+
+  if (typeof window !== 'undefined') {
+    try {
+      window.dispatchEvent(new CustomEvent('polaris:room-update', { detail: rooms }));
+    } catch (err) {}
+  }
 }
 
 let auditHistory = [];

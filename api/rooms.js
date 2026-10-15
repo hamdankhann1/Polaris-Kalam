@@ -322,12 +322,29 @@ export default async function handler(req, res) {
     const { db, error: dbError, config: mongoConfig } = await getDatabase();
     const collection = db ? db.collection('rooms') : null;
 
+    // Ensure MongoDB has rooms seeded if collection is empty & optimize indexes
+    if (collection) {
+      try {
+        const count = await collection.countDocuments();
+        if (count === 0) {
+          await collection.insertMany(INITIAL_ROOMS.map((r) => ({ ...r, activeBooking: null, bookedRanges: [] })));
+        }
+        collection.createIndex({ id: 1 }, { unique: true }).catch(() => {});
+        collection.createIndex({ roomNumber: 1 }).catch(() => {});
+        collection.createIndex({ floor: 1 }).catch(() => {});
+      } catch (seedErr) {
+        console.warn('MongoDB initial room seed warning:', seedErr.message);
+      }
+    }
+
     // -----------------------------------------------------------------------
-    // GET: Fetch all rooms
+    // GET: Fetch all rooms directly from database
     // -----------------------------------------------------------------------
     if (req.method === 'GET') {
       if (collection) {
-        // Automatically declutter expired past booked ranges older than 3 months (90 days)
+        // Automatically declutter unwanted past booked ranges older than 3 months (90 days)
+        // STRICT SAFETY: Rooms and their specifications (price, amenities, tier, capacity) are PERMANENT and NEVER DELETED!
+        // ONLY the expired past date block from months ago is pruned from the bookedRanges array.
         const ninetyDaysAgoYMD = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
         try {
@@ -345,11 +362,7 @@ export default async function handler(req, res) {
           console.warn('MongoDB room purge warning in /api/rooms:', purgeErr.message);
         }
 
-        let rooms = await collection.find({}).toArray();
-        if (rooms.length === 0) {
-          await collection.insertMany(INITIAL_ROOMS);
-          rooms = await collection.find({}).toArray();
-        }
+        const rooms = await collection.find({}).sort({ roomNumber: 1 }).toArray();
         const sanitized = rooms.map(({ _id, ...rest }) => rest);
         return res.status(200).json({
           success: true,
@@ -382,7 +395,7 @@ export default async function handler(req, res) {
     }
 
     // -----------------------------------------------------------------------
-    // PUT: Update room status, price, or specifications
+    // PUT: Update room status, price, or specifications directly in database
     // -----------------------------------------------------------------------
     if (req.method === 'PUT') {
       const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
@@ -395,12 +408,13 @@ export default async function handler(req, res) {
       updates.updatedAt = new Date().toISOString();
 
       if (collection) {
-        await collection.updateOne({ id }, { $set: updates });
+        await collection.updateOne({ id }, { $set: updates }, { upsert: true });
         const updated = await collection.findOne({ id });
         if (updated) {
           const { _id, ...rest } = updated;
           return res.status(200).json({ success: true, data: rest, source: 'mongodb', dbConnected: true });
         }
+        return res.status(200).json({ success: true, data: { id, ...updates }, source: 'mongodb', dbConnected: true });
       }
 
       const idx = fallbackRooms.findIndex((r) => r.id === id);

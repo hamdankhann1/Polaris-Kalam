@@ -26,7 +26,7 @@ function isDemoBooking(r) {
   return false;
 }
 
-// Check if request is older than 3 months (90 days)
+// Check if request is unwanted data older than 3 months (90 days)
 export function isExpiredRequest(r) {
   if (!r) return true;
   if (isDemoBooking(r)) return true;
@@ -34,9 +34,13 @@ export function isExpiredRequest(r) {
   if (r.status === 'pending' || r.status === 'approved' || r.status === 'contacted') {
     return false;
   }
-  // Only declutter archived / completed / declined records older than 90 days
+  // Only declutter archived / completed / declined records older than 90 days (3 months)
   const ninetyDaysAgoYMD = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  const ninetyDaysAgoISO = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
   if (r.checkOut && typeof r.checkOut === 'string' && r.checkOut.length >= 10 && r.checkOut < ninetyDaysAgoYMD) {
+    return true;
+  }
+  if (r.createdAt && typeof r.createdAt === 'string' && r.createdAt < ninetyDaysAgoISO) {
     return true;
   }
   return false;

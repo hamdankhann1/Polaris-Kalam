@@ -146,13 +146,19 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
       setBookingRequests(updatedRequests);
     });
 
-    // 2. Custom window event listener for instantaneous cross-component updates
+    // 2. Custom window event listeners for instantaneous cross-component updates
     const handleCustomBookingUpdate = (e) => {
       if (e.detail && Array.isArray(e.detail)) {
         setBookingRequests([...e.detail]);
       }
     };
+    const handleCustomRoomUpdate = (e) => {
+      if (e.detail && Array.isArray(e.detail)) {
+        setRooms([...e.detail]);
+      }
+    };
     window.addEventListener('polaris:booking-update', handleCustomBookingUpdate);
+    window.addEventListener('polaris:room-update', handleCustomRoomUpdate);
 
     // 3. Active 3-second real-time database polling (syncs across laptop & mobile automatically)
     const pollInterval = setInterval(() => {
@@ -188,10 +194,21 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
       unsubRequests();
       clearInterval(pollInterval);
       window.removeEventListener('polaris:booking-update', handleCustomBookingUpdate);
+      window.removeEventListener('polaris:room-update', handleCustomRoomUpdate);
       window.removeEventListener('focus', handleWindowFocus);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, []);
+
+  // Keep active room in RoomDetailsModal synced with latest room state
+  useEffect(() => {
+    if (activeRoomForDetails) {
+      const live = rooms.find((r) => r.id === activeRoomForDetails.id);
+      if (live && JSON.stringify(live) !== JSON.stringify(activeRoomForDetails)) {
+        setActiveRoomForDetails(live);
+      }
+    }
+  }, [rooms, activeRoomForDetails]);
 
   const triggerToast = (msg) => {
     setToastMessage(msg);
@@ -315,12 +332,18 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
   };
 
   const handleSaveRoom = async (formData, editId) => {
-    if (editId) {
-      await RoomService.updateRoom(editId, formData);
-      triggerToast(`Room #${formData.roomNumber} specifications updated.`);
-    } else {
-      const created = await RoomService.addRoom(formData);
-      triggerToast(`Room #${created.roomNumber} (${created.name}) added to ${created.floor}.`);
+    try {
+      if (editId) {
+        await RoomService.updateRoom(editId, formData);
+        triggerToast(`Room #${formData.roomNumber} specifications updated.`);
+      } else {
+        const created = await RoomService.addRoom(formData);
+        triggerToast(`Room #${created.roomNumber} (${created.name}) added to ${created.floor}.`);
+      }
+      const freshRooms = await RoomService.getRooms(true);
+      setRooms(freshRooms);
+    } catch (err) {
+      triggerToast('Error saving room: ' + err.message);
     }
   };
 
@@ -331,8 +354,14 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
   };
 
   const handleSavePrice = async (roomId, newPrice) => {
-    const updated = await RoomService.updatePrice(roomId, newPrice);
-    triggerToast(`Room #${updated.roomNumber} nightly rate updated to PKR ${newPrice.toLocaleString()}.`);
+    try {
+      const updated = await RoomService.updatePrice(roomId, newPrice);
+      const freshRooms = await RoomService.getRooms(true);
+      setRooms(freshRooms);
+      triggerToast(`Room #${updated.roomNumber} nightly rate updated to PKR ${newPrice.toLocaleString()}.`);
+    } catch (err) {
+      triggerToast('Error updating price: ' + err.message);
+    }
   };
 
   // --- DELETE ROOM HANDLERS ---
