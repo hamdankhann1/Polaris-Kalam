@@ -53,27 +53,40 @@ export default function Hero({ onOpenInquiry, onOpenBooking }) {
       {/* ------------------------------------------------------------- */}
       {POLARIS_CONFIG.heroBackgroundImage && (
         <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden">
-          {/* 4K Ultra High-Definition Architectural Render of Hotel & Alpine Swat Valley */}
-          <img
-            src={POLARIS_CONFIG.heroBackgroundImage}
-            alt="Polaris Kalam Hotel & Alpine Mountain Sanctuary"
-            className="w-full h-full object-cover object-center sm:object-[68%_center] md:object-center transform scale-[1.01]"
-          />
+          {/* Responsive Architectural Render: Art-directed framing across viewports */}
+          <picture className="w-full h-full block">
+            {/* Mobile Viewports (< 768px): Tailored vertical framing showing the complete 4-story hotel facade, balconies, and alpine mountain summit */}
+            {POLARIS_CONFIG.heroBackgroundImageMobile && (
+              <source
+                media="(max-width: 767px)"
+                srcSet={POLARIS_CONFIG.heroBackgroundImageMobile}
+              />
+            )}
+            {/* Tablet & Desktop Viewports (>= 768px): 4K Ultra Wide Alpine Panorama with centered building */}
+            <img
+              src={POLARIS_CONFIG.heroBackgroundImage}
+              alt="Polaris Kalam Hotel & Alpine Mountain Sanctuary"
+              className="w-full h-full object-cover object-[42%_center] sm:object-[45%_center] md:object-[78%_center] lg:object-[76%_center] xl:object-center transform scale-[1.01]"
+            />
+          </picture>
 
           {/* Luminous Light Theme Luxury Translucent Wash */}
-          <div 
-            className="absolute inset-0 bg-[#FAF9F5]" 
-            style={{ opacity: POLARIS_CONFIG.heroBackgroundOverlayOpacity ?? 0.68 }}
+          <div
+            className="absolute inset-0 bg-[#FAF9F5]"
+            style={{
+              opacity: POLARIS_CONFIG.heroBackgroundOverlayOpacity ?? 0.68,
+            }}
           />
 
           {/* Depth-of-field luxury blur layer over high-definition image */}
           <div className="absolute inset-0 backdrop-blur-[2px]" />
 
           {/* Central radial focus: softer overlay in center for razor-sharp typography */}
-          <div 
+          <div
             className="absolute inset-0"
             style={{
-              background: 'radial-gradient(ellipse at center, rgba(255,255,255,0.45) 0%, rgba(250,249,245,0.2) 55%, rgba(250,249,245,0.7) 100%)'
+              background:
+                "radial-gradient(ellipse at center, rgba(255,255,255,0.45) 0%, rgba(250,249,245,0.2) 55%, rgba(250,249,245,0.7) 100%)",
             }}
           />
 
@@ -92,7 +105,6 @@ export default function Hero({ onOpenInquiry, onOpenBooking }) {
       {/* FOREGROUND CONTENT                                            */}
       {/* ------------------------------------------------------------- */}
       <div className="relative z-10 w-full max-w-full flex flex-col items-center justify-center">
-
         {/* ------------------------------------------------------------- */}
         {/* ARCHITECTURAL GEOGRAPHIC BADGE                                */}
         {/* ------------------------------------------------------------- */}
@@ -146,105 +158,104 @@ export default function Hero({ onOpenInquiry, onOpenBooking }) {
           {POLARIS_CONFIG.mission.description}
         </p>
 
-      {/* ------------------------------------------------------------- */}
-      {/* "BOOKING WILL BE OPEN SOON" PROMINENT LUXURY ANNOUNCEMENT     */}
-      {/* ------------------------------------------------------------- */}
-      <div className="w-full max-w-lg mb-8 sm:mb-10 p-4 sm:p-6 rounded-xl bg-gradient-to-r from-amber-50/90 via-[#FFFDF7] to-amber-50/90 border border-amber-300/80 text-center space-y-3 backdrop-blur-md shadow-[0_4px_25px_rgba(180,138,40,0.08)]">
-        <div className="flex items-center justify-center space-x-2 text-[#8A661C] text-xs sm:text-sm font-mono font-bold tracking-wider uppercase">
-          <Sparkles className="w-4 h-4 text-green-600 animate-pulse shrink-0" />
-          <span>BOOKING IS OPEN FOR SOFT LAUNCH DECEMBER</span>
-        </div>
-        <p className="text-xs sm:text-sm text-stone-700 font-normal leading-relaxed">
-          Our 4 floors of panoramic alpine suites and summit penthouse are
-          preparing for the 2026 inaugural season. Direct bookings will open
-          shortly.
-        </p>
-        {onOpenBooking && (
-          <div className="pt-1.5">
-            <button
-              onClick={onOpenBooking}
-              className="w-full sm:w-auto px-4 sm:px-5 py-2.5 bg-white hover:bg-amber-50/90 border border-amber-400/80 hover:border-amber-600 text-[#8A661C] hover:text-[#705215] text-xs sm:text-sm font-mono uppercase tracking-wider transition-all inline-flex items-center justify-center space-x-2 shadow-2xs font-bold rounded-lg"
-            >
-              <span className="hidden sm:inline">
-                Explore Suites & Pricing (Booking)
-              </span>
-              <span className="sm:hidden">Explore Suites & Pricing</span>
-              <ArrowUpRight className="w-4 h-4 text-amber-600 shrink-0" />
-            </button>
+        {/* ------------------------------------------------------------- */}
+        {/* "BOOKING WILL BE OPEN SOON" PROMINENT LUXURY ANNOUNCEMENT     */}
+        {/* ------------------------------------------------------------- */}
+        <div className="w-full max-w-lg mb-8 sm:mb-10 p-4 sm:p-6 rounded-xl bg-gradient-to-r from-amber-50/90 via-[#FFFDF7] to-amber-50/90 border border-amber-300/80 text-center space-y-3 backdrop-blur-md shadow-[0_4px_25px_rgba(180,138,40,0.08)]">
+          <div className="flex items-center justify-center space-x-2 text-[#8A661C] text-xs sm:text-sm font-mono font-bold tracking-wider uppercase">
+            <Sparkles className="w-4 h-4 text-green-600 animate-pulse shrink-0" />
+            <span>BOOKING IS OPEN FOR SOFT LAUNCH DECEMBER</span>
           </div>
-        )}
-      </div>
-
-      {/* ------------------------------------------------------------- */}
-      {/* COUNTDOWN SECTION                                             */}
-      {/* ------------------------------------------------------------- */}
-      <div className="w-full max-w-xl mb-10 sm:mb-12 px-1 sm:px-0">
-        <div className="flex items-center justify-center space-x-3 mb-4">
-          <span className="h-[1px] w-6 sm:w-8 bg-amber-400/60" />
-          <span className="text-xs sm:text-sm font-sans tracking-wider uppercase text-[#8A661C] font-bold">
-            Anticipated Inaugural Season
-          </span>
-          <span className="h-[1px] w-6 sm:w-8 bg-amber-400/60" />
+          <p className="text-xs sm:text-sm text-stone-700 font-normal leading-relaxed">
+            Our 4 floors of panoramic alpine suites and summit penthouse are
+            preparing for the 2026 inaugural season. Direct bookings are open
+            for December 2026 Launch.
+          </p>
+          {onOpenBooking && (
+            <div className="pt-1.5">
+              <button
+                onClick={onOpenBooking}
+                className="w-full sm:w-auto px-4 sm:px-5 py-2.5 bg-white hover:bg-amber-50/90 border border-amber-400/80 hover:border-amber-600 text-[#8A661C] hover:text-[#705215] text-xs sm:text-sm font-mono uppercase tracking-wider transition-all inline-flex items-center justify-center space-x-2 shadow-2xs font-bold rounded-lg"
+              >
+                <span className="hidden sm:inline">
+                  Explore Suites & Pricing (Booking)
+                </span>
+                <span className="sm:hidden">Explore Suites & Pricing</span>
+                <ArrowUpRight className="w-4 h-4 text-amber-600 shrink-0" />
+              </button>
+            </div>
+          )}
         </div>
 
-        <CountdownTimer />
-      </div>
-
-      {/* ------------------------------------------------------------- */}
-      {/* CALL TO ACTION / PRIORITY WAITLIST NOTIFICATION               */}
-      {/* ------------------------------------------------------------- */}
-      <div className="w-full max-w-md px-1 sm:px-0">
-        {isSubmitted ? (
-          <div className="p-4 bg-emerald-50/90 border border-emerald-300 rounded-lg flex items-center justify-center space-x-3 text-emerald-900 text-xs sm:text-sm tracking-wide shadow-xs font-medium">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>
-              Registration confirmed. Look for your invitation for our December
-              1st Soft Launch.
+        {/* ------------------------------------------------------------- */}
+        {/* COUNTDOWN SECTION                                             */}
+        {/* ------------------------------------------------------------- */}
+        <div className="w-full max-w-xl mb-10 sm:mb-12 px-1 sm:px-0">
+          <div className="flex items-center justify-center space-x-3 mb-4">
+            <span className="h-[1px] w-6 sm:w-8 bg-amber-400/60" />
+            <span className="text-xs sm:text-sm font-sans tracking-wider uppercase text-[#8A661C] font-bold">
+              Anticipated Inaugural Season
             </span>
+            <span className="h-[1px] w-6 sm:w-8 bg-amber-400/60" />
           </div>
-        ) : (
-          <form
-            onSubmit={handleQuickSignup}
-            className="flex flex-col sm:flex-row gap-2.5 sm:gap-2 w-full max-w-full"
-          >
-            <input
-              type="email"
-              required
-              disabled={isLoading}
-              placeholder="Enter your email for Dec 1 soft launch"
-              value={emailInput}
-              onChange={(e) => setEmailInput(e.target.value)}
-              className="w-full flex-1 px-4 py-3 sm:py-3.5 bg-white border border-stone-300 rounded-lg text-stone-900 placeholder-stone-500 text-sm sm:text-base focus:outline-none focus:border-amber-600 focus:ring-1 focus:ring-amber-500 transition-colors font-sans disabled:opacity-50 shadow-2xs"
-            />
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full sm:w-auto px-6 py-3 sm:py-3.5 bg-[#B48A28] hover:bg-[#9E7719] disabled:bg-amber-400/50 text-white rounded-lg text-xs sm:text-sm font-bold tracking-wider uppercase transition-all duration-300 flex items-center justify-center space-x-2 shadow-xs hover:shadow-sm shrink-0"
+
+          <CountdownTimer />
+        </div>
+
+        {/* ------------------------------------------------------------- */}
+        {/* CALL TO ACTION / PRIORITY WAITLIST NOTIFICATION               */}
+        {/* ------------------------------------------------------------- */}
+        <div className="w-full max-w-md px-1 sm:px-0">
+          {isSubmitted ? (
+            <div className="p-4 bg-emerald-50/90 border border-emerald-300 rounded-lg flex items-center justify-center space-x-3 text-emerald-900 text-xs sm:text-sm tracking-wide shadow-xs font-medium">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>
+                Registration confirmed. Look for your invitation for our
+                December 1st Soft Launch.
+              </span>
+            </div>
+          ) : (
+            <form
+              onSubmit={handleQuickSignup}
+              className="flex flex-col sm:flex-row gap-2.5 sm:gap-2 w-full max-w-full"
             >
-              {isLoading ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span>Joining...</span>
-                </>
-              ) : (
-                <>
-                  <span>Join Waitlist</span>
-                  <ArrowUpRight className="w-4 h-4" />
-                </>
-              )}
-            </button>
-          </form>
-        )}
-      </div>
+              <input
+                type="email"
+                required
+                disabled={isLoading}
+                placeholder="Enter your email for Dec 1 soft launch"
+                value={emailInput}
+                onChange={(e) => setEmailInput(e.target.value)}
+                className="w-full flex-1 px-4 py-3 sm:py-3.5 bg-white border border-stone-300 rounded-lg text-stone-900 placeholder-stone-500 text-sm sm:text-base focus:outline-none focus:border-amber-600 focus:ring-1 focus:ring-amber-500 transition-colors font-sans disabled:opacity-50 shadow-2xs"
+              />
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full sm:w-auto px-6 py-3 sm:py-3.5 bg-[#B48A28] hover:bg-[#9E7719] disabled:bg-amber-400/50 text-white rounded-lg text-xs sm:text-sm font-bold tracking-wider uppercase transition-all duration-300 flex items-center justify-center space-x-2 shadow-xs hover:shadow-sm shrink-0"
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Joining...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Join Waitlist</span>
+                    <ArrowUpRight className="w-4 h-4" />
+                  </>
+                )}
+              </button>
+            </form>
+          )}
+        </div>
 
-      {/* Subtle Scroll Down Cue */}
-      <div className="mt-12 sm:mt-16 flex flex-col items-center opacity-70 hover:opacity-100 transition-opacity">
-        <span className="text-xs tracking-wider uppercase text-stone-600 mb-2 font-semibold">
-          Discover The Vision
-        </span>
-        <ArrowDown className="w-4 h-4 text-stone-600 animate-bounce" />
-      </div>
-
+        {/* Subtle Scroll Down Cue */}
+        <div className="mt-12 sm:mt-16 flex flex-col items-center opacity-70 hover:opacity-100 transition-opacity">
+          <span className="text-xs tracking-wider uppercase text-stone-600 mb-2 font-semibold">
+            Discover The Vision
+          </span>
+          <ArrowDown className="w-4 h-4 text-stone-600 animate-bounce" />
+        </div>
       </div>
     </section>
   );

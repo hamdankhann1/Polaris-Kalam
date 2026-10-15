@@ -39,6 +39,7 @@ export const POLARIS_CONFIG = {
   // --- HERO SECTION BACKGROUND IMAGE ---
   // Background photo specifically rendered for the top Hero section
   heroBackgroundImage: "/polaris-hero-bg.jpg",
+  heroBackgroundImageMobile: "/polaris-hero-bg-mobile.jpg",
   heroBackgroundOverlayOpacity: 0.68,
 
   // --- GLOBAL BACKGROUND IMAGE SETTING (FULL SITE) ---

@@ -95,6 +95,8 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
   // Toast Notification
   const [toastMessage, setToastMessage] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
+  const [dbStatus, setDbStatus] = useState(() => BookingRequestService.getConnectionStatus());
+  const [dbModalOpen, setDbModalOpen] = useState(false);
 
   // Manual fast database sync handler
   const handleManualSync = async () => {
@@ -106,7 +108,13 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
       ]);
       setRooms(freshRooms);
       setBookingRequests(freshRequests);
-      triggerToast('Database synchronized in real-time.');
+      const status = BookingRequestService.getConnectionStatus();
+      setDbStatus(status);
+      if (status.dbConnected) {
+        triggerToast('MongoDB Atlas database synchronized live.');
+      } else {
+        triggerToast('⚠️ Cloud database not connected. Running in temporary memory.');
+      }
     } catch (err) {
       triggerToast('Sync warning: ' + err.message);
     } finally {
@@ -124,6 +132,7 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
       ]);
       setRooms(roomsData);
       setBookingRequests(requestsData);
+      setDbStatus(BookingRequestService.getConnectionStatus());
       setIsLoading(false);
     }
     loadData();
@@ -145,30 +154,12 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
     };
     window.addEventListener('polaris:booking-update', handleCustomBookingUpdate);
 
-    // 3. Storage event listener for multi-tab sync
-    const handleStorageChange = (e) => {
-      if (e.key && e.key.startsWith('polaris_booking_requests')) {
-        try {
-          const parsed = e.newValue ? JSON.parse(e.newValue) : [];
-          if (Array.isArray(parsed)) {
-            setBookingRequests(parsed);
-          }
-        } catch (err) {
-          console.error('Storage sync error:', err);
-        }
+    // 3. Active 3-second real-time database polling (syncs across laptop & mobile automatically)
+    const pollInterval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        handleWindowFocus();
       }
-      if (e.key && (e.key.startsWith('polaris_hotel_rooms') || e.key.startsWith('polaris_rooms_inventory'))) {
-        try {
-          const parsed = e.newValue ? JSON.parse(e.newValue) : [];
-          if (Array.isArray(parsed)) {
-            setRooms(parsed);
-          }
-        } catch (err) {
-          console.error('Storage sync error:', err);
-        }
-      }
-    };
-    window.addEventListener('storage', handleStorageChange);
+    }, 3000);
 
     // 4. Tab focus and visibility sync (refreshes whenever staff switches tabs)
     const handleWindowFocus = async () => {
@@ -179,6 +170,7 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
         ]);
         setRooms(freshRooms);
         setBookingRequests(freshRequests);
+        setDbStatus(BookingRequestService.getConnectionStatus());
       } catch (err) {
         // silent
       }
@@ -194,8 +186,8 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
     return () => {
       unsubRooms();
       unsubRequests();
+      clearInterval(pollInterval);
       window.removeEventListener('polaris:booking-update', handleCustomBookingUpdate);
-      window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('focus', handleWindowFocus);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
@@ -810,20 +802,51 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
 
           {/* Right Action Buttons */}
           <div className="flex items-center space-x-2.5">
-            {/* Real-Time Database Sync Button */}
+            {/* Real-Time Database Connection Status Pill & Sync Button */}
             <button
-              onClick={handleManualSync}
+              onClick={() => {
+                if (!dbStatus.dbConnected) {
+                  setDbModalOpen(true);
+                } else {
+                  handleManualSync();
+                }
+              }}
               disabled={isSyncing}
-              className="px-3 py-1.5 rounded-lg border border-emerald-300/80 bg-emerald-50/90 hover:bg-emerald-100 text-xs font-mono uppercase tracking-wider text-emerald-800 transition-all flex items-center space-x-1.5 font-bold shadow-2xs"
-              title="Real-Time Database Sync (Click to immediately fetch latest inventory & bookings)"
+              className={`px-3 py-1.5 rounded-lg border text-xs font-mono uppercase tracking-wider transition-all flex items-center space-x-1.5 font-bold shadow-2xs ${
+                dbStatus.dbConnected
+                  ? 'border-emerald-300/80 bg-emerald-50/90 hover:bg-emerald-100 text-emerald-800'
+                  : 'border-amber-400 bg-amber-50 hover:bg-amber-100 text-amber-900 animate-pulse'
+              }`}
+              title={
+                dbStatus.dbConnected
+                  ? 'MongoDB Atlas Connected (Click to sync now)'
+                  : 'Cloud Database Disconnected (Click for setup guide)'
+              }
             >
               <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                {dbStatus.dbConnected ? (
+                  <>
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </>
+                ) : (
+                  <>
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                  </>
+                )}
               </span>
-              <RefreshCw className={`w-3 h-3 text-emerald-700 ${isSyncing ? 'animate-spin' : ''}`} />
-              <span className="hidden sm:inline">{isSyncing ? 'Syncing...' : 'Database Live'}</span>
-              <span className="sm:hidden">{isSyncing ? '...' : 'Sync'}</span>
+              <RefreshCw className={`w-3 h-3 ${isSyncing ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">
+                {isSyncing
+                  ? 'Syncing...'
+                  : dbStatus.dbConnected
+                  ? 'MongoDB Live'
+                  : 'DB Disconnected (Help)'}
+              </span>
+              <span className="sm:hidden">
+                {isSyncing ? '...' : dbStatus.dbConnected ? 'Live' : 'No DB'}
+              </span>
             </button>
 
             {onOpenBooking && (
@@ -1558,6 +1581,89 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
         bookingRequests={bookingRequests}
         onSaveRequest={handleCreateBookingRequest}
       />
+
+      {/* 8. Database Connection Status & Setup Modal */}
+      {dbModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-sm animate-fadeIn">
+          <div className="relative w-full max-w-lg bg-white border border-[#B48A28]/40 rounded-2xl shadow-2xl p-6 sm:p-7 text-stone-900 overflow-hidden">
+            <div className="flex items-start justify-between pb-3 border-b border-stone-200">
+              <div className="flex items-center space-x-2">
+                <span className={`w-3 h-3 rounded-full ${dbStatus.dbConnected ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'}`} />
+                <h3 className="font-display text-lg text-stone-900 font-semibold">
+                  {dbStatus.dbConnected ? 'MongoDB Atlas: Connected' : 'Cloud Database: Not Connected'}
+                </h3>
+              </div>
+              <button
+                onClick={() => setDbModalOpen(false)}
+                className="p-1 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-4 text-xs font-sans text-stone-700 leading-relaxed">
+              <div className="p-3 rounded-xl bg-stone-50 border border-stone-200 font-mono text-[11px] space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-stone-500">Current Storage Backend:</span>
+                  <span className={`font-bold ${dbStatus.dbConnected ? 'text-emerald-700' : 'text-amber-800'}`}>
+                    {dbStatus.source === 'mongodb' ? 'MongoDB Atlas (Persistent Cloud)' : 'In-Memory (Ephemeral Serverless)'}
+                  </span>
+                </div>
+                {dbStatus.dbError && (
+                  <div className="text-rose-600 pt-1 text-[10.5px]">
+                    Error: {dbStatus.dbError}
+                  </div>
+                )}
+              </div>
+
+              {!dbStatus.dbConnected ? (
+                <div className="space-y-3">
+                  <p className="font-medium text-stone-800">
+                    Why is this happening?
+                  </p>
+                  <p>
+                    On Vercel, serverless lambdas run in isolated containers. Without a cloud database connection, any changes made on your laptop or phone are saved to temporary memory that gets discarded when containers spin down or switch devices.
+                  </p>
+                  <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 space-y-2">
+                    <p className="font-semibold text-amber-950">To connect MongoDB Atlas permanently:</p>
+                    <ol className="list-decimal list-inside space-y-1.5 pl-1 font-mono text-[10.5px]">
+                      <li>Open your <strong>Vercel Project Dashboard</strong> → <strong>Settings</strong> → <strong>Environment Variables</strong>.</li>
+                      <li>Add key <strong>MONGODB_URI</strong> with your MongoDB Atlas connection string:
+                        <code className="block mt-1 p-1 bg-white rounded border border-amber-300 text-[10px] break-all">
+                          mongodb+srv://username:password@cluster0.xxx.mongodb.net/polaris_hotel?retryWrites=true&w=majority
+                        </code>
+                      </li>
+                      <li>In <strong>MongoDB Atlas</strong> → <strong>Network Access</strong>: ensure <code className="bg-white px-1 py-0.5 rounded border border-amber-300">0.0.0.0/0</code> (Allow access from anywhere) is added so Vercel can reach it.</li>
+                      <li>Redeploy on Vercel. Once deployed, the badge turns green and all devices sync in real-time!</li>
+                    </ol>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-emerald-800 font-medium">
+                    ✓ Your application is directly connected to MongoDB Atlas.
+                  </p>
+                  <p>
+                    All reservations, room locks, and pricing updates are written to your cloud database and automatically synced across mobile phones and laptops every 3 seconds.
+                  </p>
+                </div>
+              )}
+
+              <div className="pt-2 flex justify-end space-x-2">
+                <button
+                  onClick={() => {
+                    handleManualSync();
+                    setDbModalOpen(false);
+                  }}
+                  className="px-4 py-2 rounded-lg bg-[#B48A28] hover:bg-[#96721E] text-white font-mono text-xs font-semibold shadow-xs transition-colors"
+                >
+                  Test Connection & Sync
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

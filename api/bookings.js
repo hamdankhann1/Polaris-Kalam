@@ -13,48 +13,48 @@
 
 let cachedClient = null;
 let cachedDb = null;
+let lastDbError = null;
 
 // Initial seed requests (Empty - production database starts clean)
 const INITIAL_REQUESTS = [];
-
 const DEMO_REQUEST_IDS = ['req-101', 'req-102'];
-const DEMO_GUEST_NAMES = [
-  'Malik Zeeshan & Family',
-  'Fatima Zahra Khan',
-  'Ambassador Al-Mansoor',
-  'Farhan Qureshi',
-  'Syed Bilal Ahmad',
-  'Zubair Shah',
-  'Hassan Mir',
-  'Dr. Ayesha Malik & Family',
-  'Naveed Akhtar'
-];
 
 // Fallback in-memory storage for serverless runtime
 let fallbackBookings = [];
 
 async function getDatabase() {
   const uri = process.env.MONGODB_URI;
-  if (!uri) return null;
+  if (!uri) {
+    return { db: null, error: 'MONGODB_URI is not set in environment variables' };
+  }
 
   if (cachedClient && cachedDb) {
-    return cachedDb;
+    try {
+      await cachedDb.command({ ping: 1 });
+      return { db: cachedDb, error: null };
+    } catch (e) {
+      cachedClient = null;
+      cachedDb = null;
+    }
   }
 
   try {
     const { MongoClient } = await import('mongodb');
     const client = new MongoClient(uri, {
       maxPoolSize: 10,
-      serverSelectionTimeoutMS: 5000
+      serverSelectionTimeoutMS: 5000,
+      connectTimeoutMS: 5000
     });
     await client.connect();
     const db = client.db(process.env.MONGODB_DB_NAME || 'polaris_hotel');
     cachedClient = client;
     cachedDb = db;
-    return db;
+    lastDbError = null;
+    return { db, error: null };
   } catch (err) {
     console.error('MongoDB connection error in /api/bookings:', err);
-    return null;
+    lastDbError = err.message;
+    return { db: null, error: err.message };
   }
 }
 
@@ -73,7 +73,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const db = await getDatabase();
+    const { db, error: dbError } = await getDatabase();
     const collection = db ? db.collection('booking_requests') : null;
 
     // -----------------------------------------------------------------------
@@ -81,38 +81,58 @@ export default async function handler(req, res) {
     // -----------------------------------------------------------------------
     if (req.method === 'GET') {
       if (collection) {
-        // Auto-purge records older than 3 months (90 days) & legacy demo requests
-        const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
-        const ninetyDaysAgoYMD = ninetyDaysAgo.split('T')[0];
+        // Safe 3-month cleanup:
+        // STRICT SAFETY RULES:
+        // 1. NEVER delete 'pending', 'approved', or 'contacted' requests!
+        // 2. Only declutter 'declined', 'cancelled', or 'completed' requests
+        // 3. AND checkOut must be a valid date string that is strictly older than 90 days ago
+        // 4. NEVER match or delete by guest name!
+        const ninetyDaysAgoYMD = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
         try {
+          // Remove legacy placeholder IDs if present
+          await collection.deleteMany({ id: { $in: DEMO_REQUEST_IDS } });
+
+          // Safe declutter of archived / completed requests past 90 days
           await collection.deleteMany({
-            $or: [
-              { id: { $in: DEMO_REQUEST_IDS } },
-              { guestName: { $in: DEMO_GUEST_NAMES } },
-              { createdAt: { $lt: ninetyDaysAgo } },
-              { checkOut: { $lt: ninetyDaysAgoYMD } }
-            ]
+            status: { $in: ['declined', 'cancelled', 'completed'] },
+            checkOut: { $exists: true, $type: 'string', $regex: /^\d{4}-\d{2}-\d{2}/, $lt: ninetyDaysAgoYMD }
           });
         } catch (e) {
           console.warn('MongoDB 3-month purge warning in /api/bookings:', e.message);
         }
 
         const bookings = await collection.find({}).sort({ createdAt: -1 }).toArray();
-        // Sanitize MongoDB _id - NEVER re-seed demo requests
         const sanitized = bookings.map(({ _id, ...rest }) => rest);
-        return res.status(200).json({ success: true, data: sanitized, source: 'mongodb' });
+        return res.status(200).json({
+          success: true,
+          data: sanitized,
+          source: 'mongodb',
+          dbConnected: true
+        });
       }
 
-      const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
-      const ninetyDaysAgoYMD = ninetyDaysAgo.split('T')[0];
+      // In-Memory Fallback
+      const ninetyDaysAgoYMD = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-      fallbackBookings = fallbackBookings.filter(
-        (b) => b && !DEMO_REQUEST_IDS.includes(b.id) && !DEMO_GUEST_NAMES.includes(b.guestName) &&
-               (!b.createdAt || b.createdAt >= ninetyDaysAgo) &&
-               (!b.checkOut || b.checkOut >= ninetyDaysAgoYMD)
-      );
-      return res.status(200).json({ success: true, data: fallbackBookings, source: 'memory' });
+      fallbackBookings = fallbackBookings.filter((b) => {
+        if (!b) return false;
+        if (DEMO_REQUEST_IDS.includes(b.id)) return false;
+        // Never expire active/pending/approved reservations
+        if (['pending', 'approved', 'contacted'].includes(b.status)) return true;
+        if (b.checkOut && typeof b.checkOut === 'string' && b.checkOut.length >= 10 && b.checkOut < ninetyDaysAgoYMD) {
+          return false;
+        }
+        return true;
+      });
+
+      return res.status(200).json({
+        success: true,
+        data: fallbackBookings,
+        source: 'memory',
+        dbConnected: false,
+        dbError: dbError || lastDbError
+      });
     }
 
     // -----------------------------------------------------------------------
@@ -125,10 +145,10 @@ export default async function handler(req, res) {
       if (body?.action === 'reset' || req.query?.action === 'reset') {
         if (collection) {
           await collection.deleteMany({});
-          return res.status(200).json({ success: true, data: [], source: 'mongodb' });
+          return res.status(200).json({ success: true, data: [], source: 'mongodb', dbConnected: true });
         }
         fallbackBookings = [];
-        return res.status(200).json({ success: true, data: [], source: 'memory' });
+        return res.status(200).json({ success: true, data: [], source: 'memory', dbConnected: false });
       }
 
       if (!body) {
@@ -157,11 +177,17 @@ export default async function handler(req, res) {
 
       if (collection) {
         await collection.insertOne({ ...newBooking });
-        return res.status(201).json({ success: true, data: newBooking, source: 'mongodb' });
+        return res.status(201).json({ success: true, data: newBooking, source: 'mongodb', dbConnected: true });
       }
 
       fallbackBookings.unshift(newBooking);
-      return res.status(201).json({ success: true, data: newBooking, source: 'memory' });
+      return res.status(201).json({
+        success: true,
+        data: newBooking,
+        source: 'memory',
+        dbConnected: false,
+        warning: 'Saved to temporary server memory only. Set MONGODB_URI in Vercel to persist permanently.'
+      });
     }
 
     // -----------------------------------------------------------------------
@@ -186,14 +212,14 @@ export default async function handler(req, res) {
         const updated = await collection.findOne({ id });
         if (updated) {
           const { _id, ...rest } = updated;
-          return res.status(200).json({ success: true, data: rest, source: 'mongodb' });
+          return res.status(200).json({ success: true, data: rest, source: 'mongodb', dbConnected: true });
         }
       }
 
       const idx = fallbackBookings.findIndex((b) => b.id === id);
       if (idx !== -1) {
         fallbackBookings[idx] = { ...fallbackBookings[idx], ...updateFields };
-        return res.status(200).json({ success: true, data: fallbackBookings[idx], source: 'memory' });
+        return res.status(200).json({ success: true, data: fallbackBookings[idx], source: 'memory', dbConnected: false });
       }
 
       return res.status(404).json({ success: false, error: 'Booking not found' });
@@ -210,10 +236,10 @@ export default async function handler(req, res) {
       if (purgeAll) {
         if (collection) {
           await collection.deleteMany({});
-          return res.status(200).json({ success: true, message: 'All booking requests purged', source: 'mongodb' });
+          return res.status(200).json({ success: true, message: 'All booking requests purged', source: 'mongodb', dbConnected: true });
         }
         fallbackBookings = [];
-        return res.status(200).json({ success: true, message: 'All booking requests purged', source: 'memory' });
+        return res.status(200).json({ success: true, message: 'All booking requests purged', source: 'memory', dbConnected: false });
       }
 
       if (!id) {
@@ -222,11 +248,11 @@ export default async function handler(req, res) {
 
       if (collection) {
         await collection.deleteOne({ id });
-        return res.status(200).json({ success: true, deletedId: id, source: 'mongodb' });
+        return res.status(200).json({ success: true, deletedId: id, source: 'mongodb', dbConnected: true });
       }
 
       fallbackBookings = fallbackBookings.filter((b) => b.id !== id);
-      return res.status(200).json({ success: true, deletedId: id, source: 'memory' });
+      return res.status(200).json({ success: true, deletedId: id, source: 'memory', dbConnected: false });
     }
 
     return res.status(405).json({ success: false, error: 'Method not allowed' });

@@ -232,17 +232,6 @@ const INITIAL_ROOMS = [
 ];
 
 const DEMO_RANGE_IDS = ['b-501-1', 'b-401-1', 'b-301-1', 'b-301-2', 'b-201-1', 'b-202-1', 'b-101-1'];
-const DEMO_GUEST_NAMES = [
-  'Malik Zeeshan & Family',
-  'Fatima Zahra Khan',
-  'Ambassador Al-Mansoor',
-  'Farhan Qureshi',
-  'Syed Bilal Ahmad',
-  'Zubair Shah',
-  'Hassan Mir',
-  'Dr. Ayesha Malik & Family',
-  'Naveed Akhtar'
-];
 
 // Zero demo seed requests - production server starts clean
 const INITIAL_REQUESTS = [];
@@ -272,35 +261,16 @@ async function initMongoDB() {
     const roomsCol = db.collection('rooms');
     const bookingsCol = db.collection('booking_requests');
 
-    // Permanently purge any legacy demo booking requests from MongoDB
+    // Purge legacy placeholder IDs if present
     try {
-      await bookingsCol.deleteMany({
-        $or: [
-          { id: { $in: ['req-101', 'req-102'] } },
-          { guestName: { $in: DEMO_GUEST_NAMES } }
-        ]
-      });
+      await bookingsCol.deleteMany({ id: { $in: ['req-101', 'req-102'] } });
       await roomsCol.updateMany(
         {},
         {
           $pull: {
-            bookedRanges: {
-              $or: [
-                { id: { $in: DEMO_RANGE_IDS } },
-                { guestName: { $in: DEMO_GUEST_NAMES } }
-              ]
-            }
+            bookedRanges: { id: { $in: DEMO_RANGE_IDS } }
           }
         }
-      );
-      await roomsCol.updateMany(
-        {
-          $or: [
-            { 'activeBooking.guestName': { $in: DEMO_GUEST_NAMES } },
-            { 'activeBooking.bookingRef': { $in: ['PK-9821', 'PK-4412'] } }
-          ]
-        },
-        { $set: { activeBooking: null } }
       );
     } catch (e) {
       console.warn('[MongoDB Warning] Demo purge notice:', e.message);
@@ -356,44 +326,33 @@ app.get('/api/health', (req, res) => {
 app.get('/api/bookings', async (req, res) => {
   try {
     const DEMO_REQUEST_IDS = ['req-101', 'req-102'];
-    const DEMO_GUEST_NAMES = [
-      'Malik Zeeshan & Family',
-      'Fatima Zahra Khan',
-      'Ambassador Al-Mansoor',
-      'Farhan Qureshi',
-      'Syed Bilal Ahmad',
-      'Zubair Shah',
-      'Hassan Mir',
-      'Dr. Ayesha Malik & Family',
-      'Naveed Akhtar'
-    ];
-
-    const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
-    const ninetyDaysAgoYMD = ninetyDaysAgo.split('T')[0];
+    const ninetyDaysAgoYMD = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
     if (db) {
       try {
+        await db.collection('booking_requests').deleteMany({ id: { $in: DEMO_REQUEST_IDS } });
+        // Safe 3-month declutter: only archived/declined/completed requests where checkout was >90 days ago
         await db.collection('booking_requests').deleteMany({
-          $or: [
-            { id: { $in: DEMO_REQUEST_IDS } },
-            { guestName: { $in: DEMO_GUEST_NAMES } },
-            { createdAt: { $lt: ninetyDaysAgo } },
-            { checkOut: { $lt: ninetyDaysAgoYMD } }
-          ]
+          status: { $in: ['declined', 'cancelled', 'completed'] },
+          checkOut: { $exists: true, $type: 'string', $regex: /^\d{4}-\d{2}-\d{2}/, $lt: ninetyDaysAgoYMD }
         });
       } catch (e) {}
 
       const docs = await db.collection('booking_requests').find({}).sort({ createdAt: -1 }).toArray();
       const sanitized = docs.map(({ _id, ...rest }) => rest);
-      return res.json({ success: true, data: sanitized, source: 'mongodb' });
+      return res.json({ success: true, data: sanitized, source: 'mongodb', dbConnected: true });
     }
 
-    memoryBookings = memoryBookings.filter(
-      (b) => b && !DEMO_REQUEST_IDS.includes(b.id) && !DEMO_GUEST_NAMES.includes(b.guestName) &&
-             (!b.createdAt || b.createdAt >= ninetyDaysAgo) &&
-             (!b.checkOut || b.checkOut >= ninetyDaysAgoYMD)
-    );
-    return res.json({ success: true, data: memoryBookings, source: 'memory' });
+    memoryBookings = memoryBookings.filter((b) => {
+      if (!b) return false;
+      if (DEMO_REQUEST_IDS.includes(b.id)) return false;
+      if (['pending', 'approved', 'contacted'].includes(b.status)) return true;
+      if (b.checkOut && typeof b.checkOut === 'string' && b.checkOut.length >= 10 && b.checkOut < ninetyDaysAgoYMD) {
+        return false;
+      }
+      return true;
+    });
+    return res.json({ success: true, data: memoryBookings, source: 'memory', dbConnected: false });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -512,15 +471,7 @@ app.delete('/api/bookings', async (req, res) => {
 app.get('/api/rooms', async (req, res) => {
   try {
     const DEMO_RANGE_IDS = ['b-501-1', 'b-401-1', 'b-301-1', 'b-301-2', 'b-201-1', 'b-202-1', 'b-101-1'];
-    const DEMO_GUEST_NAMES = [
-      'Ambassador Al-Mansoor',
-      'Farhan Qureshi',
-      'Syed Bilal Ahmad',
-      'Zubair Shah',
-      'Hassan Mir',
-      'Dr. Ayesha Malik & Family',
-      'Naveed Akhtar'
-    ];
+    const ninetyDaysAgoYMD = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
     if (db) {
       try {
@@ -529,34 +480,7 @@ app.get('/api/rooms', async (req, res) => {
           {
             $pull: {
               bookedRanges: {
-                $or: [
-                  { id: { $in: DEMO_RANGE_IDS } },
-                  { guestName: { $in: DEMO_GUEST_NAMES } }
-                ]
-              }
-            }
-          }
-        );
-        await db.collection('rooms').updateMany(
-          {
-            $or: [
-              { 'activeBooking.guestName': { $in: DEMO_GUEST_NAMES } },
-              { 'activeBooking.bookingRef': { $in: ['PK-9821', 'PK-4412'] } }
-            ]
-          },
-          { $set: { activeBooking: null } }
-        );
-
-        // Automatically declutter expired past booked ranges older than 3 months (90 days)
-        const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
-        const ninetyDaysAgoYMD = ninetyDaysAgo.split('T')[0];
-
-        await db.collection('rooms').updateMany(
-          {},
-          {
-            $pull: {
-              bookedRanges: {
-                checkOut: { $lt: ninetyDaysAgoYMD }
+                checkOut: { $exists: true, $type: 'string', $regex: /^\d{4}-\d{2}-\d{2}/, $lt: ninetyDaysAgoYMD }
               }
             }
           }
@@ -569,17 +493,17 @@ app.get('/api/rooms', async (req, res) => {
         docs = await db.collection('rooms').find({}).toArray();
       }
       const sanitized = docs.map(({ _id, ...rest }) => rest);
-      return res.json({ success: true, data: sanitized, source: 'mongodb' });
+      return res.json({ success: true, data: sanitized, source: 'mongodb', dbConnected: true });
     }
 
-    const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
-    const ninetyDaysAgoYMD = ninetyDaysAgo.split('T')[0];
     memoryRooms.forEach((r) => {
       if (Array.isArray(r.bookedRanges)) {
-        r.bookedRanges = r.bookedRanges.filter((b) => !b.checkOut || b.checkOut >= ninetyDaysAgoYMD);
+        r.bookedRanges = r.bookedRanges.filter(
+          (b) => !b.checkOut || typeof b.checkOut !== 'string' || b.checkOut.length < 10 || b.checkOut >= ninetyDaysAgoYMD
+        );
       }
     });
-    return res.json({ success: true, data: memoryRooms, source: 'memory' });
+    return res.json({ success: true, data: memoryRooms, source: 'memory', dbConnected: false });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

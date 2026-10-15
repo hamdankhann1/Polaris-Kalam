@@ -15,28 +15,14 @@
  * 4. Status transitions: 'pending' (red badge), 'approved', 'contacted', 'declined'.
  */
 
-const STORAGE_KEY = 'polaris_booking_requests_v2';
-
 // Zero placeholder bookings - production database starts completely clean
 const INITIAL_REQUESTS = [];
 
 const DEMO_REQUEST_IDS = new Set(['req-101', 'req-102']);
-const DEMO_GUEST_NAMES = new Set([
-  'Malik Zeeshan & Family',
-  'Fatima Zahra Khan',
-  'Ambassador Al-Mansoor',
-  'Farhan Qureshi',
-  'Syed Bilal Ahmad',
-  'Zubair Shah',
-  'Hassan Mir',
-  'Dr. Ayesha Malik & Family',
-  'Naveed Akhtar'
-]);
 
 function isDemoBooking(r) {
   if (!r) return false;
   if (r.id && (DEMO_REQUEST_IDS.has(r.id) || String(r.id).startsWith('req-demo-'))) return true;
-  if (r.guestName && DEMO_GUEST_NAMES.has(r.guestName)) return true;
   return false;
 }
 
@@ -44,34 +30,30 @@ function isDemoBooking(r) {
 export function isExpiredRequest(r) {
   if (!r) return true;
   if (isDemoBooking(r)) return true;
-  const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
-  const ninetyDaysAgoYMD = ninetyDaysAgo.split('T')[0];
-  if (r.createdAt && r.createdAt < ninetyDaysAgo) return true;
-  if (r.checkOut && r.checkOut < ninetyDaysAgoYMD) return true;
+  // NEVER expire pending, approved, or contacted reservations!
+  if (r.status === 'pending' || r.status === 'approved' || r.status === 'contacted') {
+    return false;
+  }
+  // Only declutter archived / completed / declined records older than 90 days
+  const ninetyDaysAgoYMD = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  if (r.checkOut && typeof r.checkOut === 'string' && r.checkOut.length >= 10 && r.checkOut < ninetyDaysAgoYMD) {
+    return true;
+  }
   return false;
 }
 
-// Immediate purge on startup if in browser
+// Purge all legacy localStorage keys on startup so no persistent storage remains in browser
 if (typeof window !== 'undefined') {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        const cleaned = parsed.filter((r) => !isExpiredRequest(r));
-        if (cleaned.length !== parsed.length) {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(cleaned));
-        }
-      }
-    }
-    // Also remove legacy keys
-    localStorage.removeItem('polaris_booking_requests');
+    localStorage.removeItem('polaris_booking_requests_v2');
     localStorage.removeItem('polaris_booking_requests_v1');
+    localStorage.removeItem('polaris_booking_requests');
   } catch (e) {}
 }
 
 const listeners = new Set();
 let isSyncing = false;
+let lastDbConnection = { dbConnected: false, source: 'unknown', dbError: null, lastSyncedAt: null };
 
 function notifyListeners(requests) {
   listeners.forEach((listener) => {
@@ -92,21 +74,6 @@ function notifyListeners(requests) {
   }
 }
 
-// Listen to storage events from other tabs / windows
-if (typeof window !== 'undefined') {
-  window.addEventListener('storage', (event) => {
-    if (event.key === STORAGE_KEY) {
-      try {
-        const updated = event.newValue ? JSON.parse(event.newValue) : [];
-        const cleaned = Array.isArray(updated) ? updated.filter((r) => !isDemoBooking(r)) : [];
-        notifyListeners(cleaned);
-      } catch (e) {
-        console.error('Error handling storage event for booking requests:', e);
-      }
-    }
-  });
-}
-
 let cachedRequests = [];
 
 export const BookingRequestService = {
@@ -115,9 +82,14 @@ export const BookingRequestService = {
     return () => listeners.delete(callback);
   },
 
+  getConnectionStatus() {
+    return { ...lastDbConnection };
+  },
+
   /**
    * Fetch all booking requests directly from database API (/api/bookings).
    * Ensures mobile phones, laptops, and staff desks see the exact same reservations.
+   * SOLE SOURCE OF TRUTH IS THE DATABASE — NO PERSISTENT LOCAL STORAGE.
    */
   async getRequests(force = false) {
     try {
@@ -132,34 +104,25 @@ export const BookingRequestService = {
 
       if (res.ok) {
         const json = await res.json();
+        lastDbConnection = {
+          dbConnected: Boolean(json.dbConnected || json.source === 'mongodb'),
+          source: json.source || (json.dbConnected ? 'mongodb' : 'memory'),
+          dbError: json.dbError || null,
+          lastSyncedAt: new Date().toISOString()
+        };
+
         if (json.success && Array.isArray(json.data)) {
           const cloudRequests = json.data.filter((r) => !isExpiredRequest(r));
           cachedRequests = cloudRequests;
-          try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(cloudRequests));
-          } catch (e) {}
           notifyListeners(cloudRequests);
           return [...cloudRequests];
         }
       }
     } catch (err) {
-      console.warn('[BookingRequestService] Database API unreachable, falling back to cache:', err);
+      console.warn('[BookingRequestService] Database API unreachable:', err);
     }
 
-    // Fallback only if offline / network error
-    if (cachedRequests.length > 0) return [...cachedRequests];
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) {
-          cachedRequests = parsed.filter((r) => !isExpiredRequest(r));
-          return [...cachedRequests];
-        }
-      }
-    } catch (e) {}
-
-    return [];
+    return [...cachedRequests];
   },
 
   async syncWithCloud() {
@@ -179,7 +142,6 @@ export const BookingRequestService = {
     }
 
     cachedRequests = [];
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify([])); } catch (e) {}
     notifyListeners([]);
     return [];
   },

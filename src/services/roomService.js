@@ -17,9 +17,6 @@
  * 4. Update Room Nightly Prices & Specifications
  */
 
-const STORAGE_KEY = 'polaris_hotel_rooms_v4';
-const HISTORY_KEY = 'polaris_room_audit_log_v2';
-
 // The 5 Official Architectural Categories: 4 Floors + 1 Top Suite
 export const FLOOR_CATEGORIES = [
   'Top Suite',
@@ -271,27 +268,23 @@ function notifyListeners(rooms) {
   });
 }
 
+let auditHistory = [];
+
 /**
- * Log an audit action to history
+ * Log an audit action to history (kept in runtime memory)
  */
 function logAudit(action, roomId, roomNumber, details) {
-  try {
-    const raw = localStorage.getItem(HISTORY_KEY);
-    const history = raw ? JSON.parse(raw) : [];
-    const entry = {
-      id: 'log-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
-      timestamp: new Date().toISOString(),
-      action,
-      roomId,
-      roomNumber,
-      details,
-      staff: 'Front Desk Duty'
-    };
-    history.unshift(entry);
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(0, 50)));
-  } catch (err) {
-    console.error('Failed to log room audit:', err);
-  }
+  const entry = {
+    id: 'log-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+    timestamp: new Date().toISOString(),
+    action,
+    roomId,
+    roomNumber,
+    details,
+    staff: 'Front Desk Duty'
+  };
+  auditHistory.unshift(entry);
+  if (auditHistory.length > 50) auditHistory.pop();
 }
 
 const DEMO_RANGE_IDS = new Set([
@@ -304,36 +297,20 @@ const DEMO_RANGE_IDS = new Set([
   'b-101-1'
 ]);
 
-const DEMO_GUEST_NAMES = new Set([
-  'Ambassador Al-Mansoor',
-  'Farhan Qureshi',
-  'Syed Bilal Ahmad',
-  'Zubair Shah',
-  'Hassan Mir',
-  'Dr. Ayesha Malik & Family',
-  'Naveed Akhtar',
-  'Malik Zeeshan & Family',
-  'Fatima Zahra Khan'
-]);
-
 function isDemoRange(range) {
   if (!range) return false;
   if (range.id && (DEMO_RANGE_IDS.has(range.id) || String(range.id).startsWith('b-demo-'))) return true;
-  if (range.guestName && DEMO_GUEST_NAMES.has(range.guestName)) return true;
   return false;
 }
 
 export function cleanRoom(room) {
   if (!room) return room;
-  const isDemoActive = room.activeBooking && (
-    (room.activeBooking.guestName && DEMO_GUEST_NAMES.has(room.activeBooking.guestName)) ||
-    (room.activeBooking.bookingRef && ['PK-9821', 'PK-4412'].includes(room.activeBooking.bookingRef))
-  );
+  const isDemoActive = room.activeBooking && room.activeBooking.bookingRef && ['PK-9821', 'PK-4412'].includes(room.activeBooking.bookingRef);
 
   const ninetyDaysAgoYMD = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
   const cleanedRanges = Array.isArray(room.bookedRanges)
-    ? room.bookedRanges.filter((b) => !isDemoRange(b) && (!b.checkOut || b.checkOut >= ninetyDaysAgoYMD))
+    ? room.bookedRanges.filter((b) => !isDemoRange(b) && (!b.checkOut || typeof b.checkOut !== 'string' || b.checkOut.length < 10 || b.checkOut >= ninetyDaysAgoYMD))
     : [];
 
   return {
@@ -343,7 +320,7 @@ export function cleanRoom(room) {
   };
 }
 
-// Purge obsolete and conflicting localStorage keys on startup
+// Purge all legacy localStorage room keys so no persistent storage remains in browser
 if (typeof window !== 'undefined') {
   try {
     localStorage.removeItem('polaris_hotel_rooms_v4');
@@ -351,10 +328,12 @@ if (typeof window !== 'undefined') {
     localStorage.removeItem('polaris_hotel_rooms_v2');
     localStorage.removeItem('polaris_hotel_rooms');
     localStorage.removeItem('polaris_rooms_inventory_v3');
+    localStorage.removeItem('polaris_room_audit_log_v2');
   } catch (e) {}
 }
 
 let cachedRooms = [];
+let lastDbConnection = { dbConnected: false, source: 'unknown', dbError: null, lastSyncedAt: null };
 
 export const RoomService = {
   /**
@@ -363,6 +342,10 @@ export const RoomService = {
   subscribe(callback) {
     listeners.add(callback);
     return () => listeners.delete(callback);
+  },
+
+  getConnectionStatus() {
+    return { ...lastDbConnection };
   },
 
   /**
@@ -380,35 +363,27 @@ export const RoomService = {
       });
       if (res.ok) {
         const json = await res.json();
+        lastDbConnection = {
+          dbConnected: Boolean(json.dbConnected || json.source === 'mongodb'),
+          source: json.source || (json.dbConnected ? 'mongodb' : 'memory'),
+          dbError: json.dbError || null,
+          lastSyncedAt: new Date().toISOString()
+        };
+
         if (json.success && Array.isArray(json.data) && json.data.length > 0) {
           const cleaned = json.data.map(cleanRoom);
           cachedRooms = cleaned;
-          try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(cleaned));
-          } catch (e) {}
           notifyListeners(cleaned);
           return [...cleaned];
         }
       }
     } catch (e) {
-      console.warn('[RoomService] Database API unreachable, falling back to local cache:', e);
+      console.warn('[RoomService] Database API unreachable:', e);
     }
 
-    // Fallback only if database network call fails completely (offline device)
     if (cachedRooms.length > 0) {
       return [...cachedRooms];
     }
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          cachedRooms = parsed.map(cleanRoom);
-          return [...cachedRooms];
-        }
-      }
-    } catch (e) {}
-
     return INITIAL_ROOMS.map(cleanRoom);
   },
 
@@ -420,15 +395,10 @@ export const RoomService = {
   },
 
   /**
-   * Get audit history log
+   * Get audit history log (in-memory)
    */
   async getAuditLog() {
-    try {
-      const raw = localStorage.getItem(HISTORY_KEY);
-      return raw ? JSON.parse(raw) : [];
-    } catch (e) {
-      return [];
-    }
+    return [...auditHistory];
   },
 
   /**
