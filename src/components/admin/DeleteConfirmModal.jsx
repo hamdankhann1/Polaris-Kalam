@@ -45,7 +45,7 @@ export default function DeleteConfirmModal({ isOpen, onClose, room, onConfirmDel
                 Remove Room #{room.roomNumber}
               </h3>
               <p className="text-xs text-stone-500 font-mono">
-                {room.floor} • {room.tier}
+                {room.category || room.tier || room.floor}
               </p>
             </div>
           </div>

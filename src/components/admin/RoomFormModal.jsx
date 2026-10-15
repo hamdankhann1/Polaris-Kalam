@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { X, Bed, DollarSign, Layers, Tag, Users, Sparkles, ArrowRight } from 'lucide-react';
-import { FLOOR_CATEGORIES } from '../../services/roomService';
+import { X, Bed, DollarSign, Layers, Tag, Users, Sparkles, ArrowRight, Plus, Check } from 'lucide-react';
+import { CategoryService } from '../../services/categoryService';
 
 /**
  * =========================================================================
@@ -9,9 +9,9 @@ import { FLOOR_CATEGORIES } from '../../services/roomService';
  * 
  * Used for both ADDING a new room and EDITING an existing room's details:
  * - Room Number
- * - Room / Suite Name
- * - Floor / Category (Top Suite, Floor 4, Floor 3, Floor 2, Floor 1)
- * - Room Tier / Class
+ * - Room / Suite Title
+ * - Room Category (100% custom user-defined, persisted to MongoDB)
+ * - Floor / Level (Optional custom field)
  * - Nightly Rate (PKR)
  * - Guest Capacity & Bed Type
  * - Architectural Amenities
@@ -23,10 +23,8 @@ export default function RoomFormModal({ isOpen, onClose, roomToEdit = null, onSa
 
   const [roomNumber, setRoomNumber] = useState('');
   const [name, setName] = useState('');
-  const [floor, setFloor] = useState('Floor 1');
-  const [isCustomFloor, setIsCustomFloor] = useState(false);
-  const [tier, setTier] = useState('Deluxe Alpine');
-  const [isCustomTier, setIsCustomTier] = useState(false);
+  const [category, setCategory] = useState('');
+  const [floor, setFloor] = useState('');
   const [pricePKR, setPricePKR] = useState(45000);
   const [capacity, setCapacity] = useState('2 Guests • 1 King Bed');
   const [amenities, setAmenities] = useState('Panoramic Mountain View, Heated Floors, Private Bath');
@@ -34,24 +32,34 @@ export default function RoomFormModal({ isOpen, onClose, roomToEdit = null, onSa
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
 
+  // Custom Categories state & inline creation
+  const [customCategories, setCustomCategories] = useState([]);
+  const [isAddingCategory, setIsAddingCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [isCreatingCat, setIsCreatingCat] = useState(false);
+
+  useEffect(() => {
+    // Load categories from database
+    CategoryService.getCategories().then((cats) => {
+      if (Array.isArray(cats)) {
+        setCustomCategories(cats);
+      }
+    });
+
+    const unsubscribe = CategoryService.subscribe((cats) => {
+      setCustomCategories(cats);
+    });
+
+    return () => unsubscribe();
+  }, [isOpen]);
+
   useEffect(() => {
     if (roomToEdit) {
       setRoomNumber(roomToEdit.roomNumber || '');
       setName(roomToEdit.name || '');
-      const currentFloor = roomToEdit.floor || 'Floor 1';
-      setFloor(currentFloor);
-      setIsCustomFloor(!FLOOR_CATEGORIES.includes(currentFloor));
-      const currentTier = roomToEdit.tier || 'Deluxe Alpine';
-      setTier(currentTier);
-      const standardTiers = [
-        'Top Suite / Presidential',
-        'Presidential Suite',
-        'Executive Suite',
-        'Deluxe Alpine',
-        'Forest Chalet',
-        'Luxury Studio'
-      ];
-      setIsCustomTier(!standardTiers.includes(currentTier));
+      const existingCategory = roomToEdit.category || roomToEdit.tier || roomToEdit.floor || '';
+      setCategory(existingCategory);
+      setFloor(roomToEdit.floor || '');
       setPricePKR(roomToEdit.pricePKR || 45000);
       setCapacity(roomToEdit.capacity || '2 Guests • 1 King Bed');
       setAmenities(
@@ -63,17 +71,39 @@ export default function RoomFormModal({ isOpen, onClose, roomToEdit = null, onSa
     } else {
       setRoomNumber('');
       setName('');
-      setFloor('Floor 1');
-      setIsCustomFloor(false);
-      setTier('Deluxe Alpine');
-      setIsCustomTier(false);
+      // Default to first category if available
+      setCategory(customCategories[0]?.name || '');
+      setFloor('');
       setPricePKR(45000);
       setCapacity('2 Guests • 1 King Bed');
       setAmenities('Panoramic Mountain View, Heated Floors, Private Bath');
       setStatus('available');
     }
+    setIsAddingCategory(false);
+    setNewCategoryName('');
     setError('');
   }, [roomToEdit, isOpen]);
+
+  const handleQuickAddCategory = async (e) => {
+    e?.preventDefault();
+    if (!newCategoryName.trim()) {
+      setError('Please enter a name for the new category.');
+      return;
+    }
+
+    setIsCreatingCat(true);
+    setError('');
+    try {
+      const created = await CategoryService.addCategory(newCategoryName.trim());
+      setCategory(created.name);
+      setNewCategoryName('');
+      setIsAddingCategory(false);
+    } catch (catErr) {
+      setError(catErr.message || 'Failed to save new category.');
+    } finally {
+      setIsCreatingCat(false);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -84,7 +114,11 @@ export default function RoomFormModal({ isOpen, onClose, roomToEdit = null, onSa
       return;
     }
     if (!name.trim()) {
-      setError('Please provide a Room or Suite Name.');
+      setError('Please provide a Room or Suite Title.');
+      return;
+    }
+    if (!category.trim()) {
+      setError('Please select or create a Room Category.');
       return;
     }
     if (isNaN(Number(pricePKR)) || Number(pricePKR) <= 0) {
@@ -94,11 +128,13 @@ export default function RoomFormModal({ isOpen, onClose, roomToEdit = null, onSa
 
     setIsSubmitting(true);
     try {
+      const selectedCat = category.trim();
       const data = {
         roomNumber: roomNumber.trim(),
         name: name.trim(),
-        floor,
-        tier,
+        category: selectedCat,
+        tier: selectedCat, // Keep in sync for compatibility
+        floor: floor.trim() || selectedCat,
         pricePKR: Number(pricePKR),
         capacity: capacity.trim(),
         amenities: amenities.split(',').map((s) => s.trim()).filter(Boolean),
@@ -134,8 +170,8 @@ export default function RoomFormModal({ isOpen, onClose, roomToEdit = null, onSa
             </h3>
             <p className="text-xs text-stone-500 font-light">
               {isEditing 
-                ? 'Update room pricing, floor allocation, or architectural amenities.' 
-                : 'Categorize room into one of the 4 floors or the top penthouse suite.'}
+                ? 'Update room pricing, custom category allocation, or architectural amenities.' 
+                : 'Define room specifications and assign to your custom room categories.'}
             </p>
           </div>
 
@@ -156,7 +192,7 @@ export default function RoomFormModal({ isOpen, onClose, roomToEdit = null, onSa
             </div>
           )}
 
-          {/* Row 1: Room Number & Floor Category */}
+          {/* Row 1: Room Number & Room Category */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-[11px] font-mono uppercase tracking-wider text-stone-600 mb-1.5 font-medium">
@@ -172,40 +208,65 @@ export default function RoomFormModal({ isOpen, onClose, roomToEdit = null, onSa
               />
             </div>
 
+            {/* Room Category */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="block text-[11px] font-mono uppercase tracking-wider text-stone-600 font-medium">
-                  Floor / Category *
+                  Room Category *
                 </label>
                 <button
                   type="button"
-                  onClick={() => setIsCustomFloor(!isCustomFloor)}
+                  onClick={() => setIsAddingCategory(!isAddingCategory)}
                   className="text-[10px] font-mono text-[#B48A28] hover:text-[#8A661C] underline font-medium"
                 >
-                  {isCustomFloor ? 'Select Standard Floor' : '+ Custom Category'}
+                  {isAddingCategory ? 'Select Existing' : '+ New Category'}
                 </button>
               </div>
 
-              {isCustomFloor ? (
-                <input
-                  type="text"
-                  required
-                  value={floor}
-                  onChange={(e) => setFloor(e.target.value)}
-                  placeholder="e.g. Ground Floor, Riverside Wing"
-                  className="w-full bg-stone-50 border border-stone-300 rounded-lg px-3.5 py-2.5 text-sm text-stone-900 focus:outline-none focus:border-amber-600 focus:bg-white focus:ring-1 focus:ring-amber-500 transition-colors font-medium"
-                />
+              {isAddingCategory ? (
+                <div className="flex items-center space-x-1.5">
+                  <input
+                    type="text"
+                    value={newCategoryName}
+                    onChange={(e) => setNewCategoryName(e.target.value)}
+                    placeholder="e.g. Executive Alpine Suite"
+                    className="flex-1 bg-stone-50 border border-amber-300 rounded-lg px-3 py-2 text-sm text-stone-900 focus:outline-none focus:border-amber-600 focus:bg-white font-medium"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleQuickAddCategory}
+                    disabled={isCreatingCat}
+                    className="px-3 py-2 rounded-lg bg-[#B48A28] hover:bg-[#9E7719] text-white text-xs font-mono font-bold transition-colors shrink-0"
+                  >
+                    {isCreatingCat ? '...' : 'Add'}
+                  </button>
+                </div>
               ) : (
                 <select
-                  value={floor}
-                  onChange={(e) => setFloor(e.target.value)}
+                  value={category}
+                  onChange={(e) => {
+                    if (e.target.value === '__CREATE_NEW__') {
+                      setIsAddingCategory(true);
+                    } else {
+                      setCategory(e.target.value);
+                    }
+                  }}
                   className="w-full bg-stone-50 border border-stone-300 rounded-lg px-3.5 py-2.5 text-sm text-stone-900 focus:outline-none focus:border-amber-600 focus:bg-white focus:ring-1 focus:ring-amber-500 transition-colors cursor-pointer"
                 >
-                  {FLOOR_CATEGORIES.map((cat) => (
-                    <option key={cat} value={cat}>
-                      {cat === 'Top Suite' ? '👑 Top Suite (Summit Penthouse)' : cat}
+                  {category && !customCategories.some((c) => c.name === category) && (
+                    <option value={category}>{category}</option>
+                  )}
+                  {customCategories.length === 0 && !category && (
+                    <option value="">-- No categories defined yet --</option>
+                  )}
+                  {customCategories.map((cat) => (
+                    <option key={cat.id || cat.name} value={cat.name}>
+                      {cat.name}
                     </option>
                   ))}
+                  <option value="__CREATE_NEW__" className="text-[#B48A28] font-bold">
+                    + Create New Category...
+                  </option>
                 </select>
               )}
             </div>
@@ -226,44 +287,19 @@ export default function RoomFormModal({ isOpen, onClose, roomToEdit = null, onSa
             />
           </div>
 
-          {/* Row 3: Tier & Price */}
+          {/* Row 3: Floor / Level & Nightly Price */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-[11px] font-mono uppercase tracking-wider text-stone-600 font-medium">
-                  Room Tier / Class
-                </label>
-                <button
-                  type="button"
-                  onClick={() => setIsCustomTier(!isCustomTier)}
-                  className="text-[10px] font-mono text-[#B48A28] hover:text-[#8A661C] underline font-medium"
-                >
-                  {isCustomTier ? 'Select Standard Tier' : '+ Custom Class'}
-                </button>
-              </div>
-
-              {isCustomTier ? (
-                <input
-                  type="text"
-                  value={tier}
-                  onChange={(e) => setTier(e.target.value)}
-                  placeholder="e.g. Honeymoon Suite, Riverside Villa"
-                  className="w-full bg-stone-50 border border-stone-300 rounded-lg px-3.5 py-2.5 text-sm text-stone-900 focus:outline-none focus:border-amber-600 focus:bg-white focus:ring-1 focus:ring-amber-500 transition-colors font-medium"
-                />
-              ) : (
-                <select
-                  value={tier}
-                  onChange={(e) => setTier(e.target.value)}
-                  className="w-full bg-stone-50 border border-stone-300 rounded-lg px-3.5 py-2.5 text-sm text-stone-900 focus:outline-none focus:border-amber-600 focus:bg-white focus:ring-1 focus:ring-amber-500 transition-colors cursor-pointer"
-                >
-                  <option value="Top Suite / Presidential">Top Suite / Presidential</option>
-                  <option value="Presidential Suite">Presidential Suite</option>
-                  <option value="Executive Suite">Executive Suite</option>
-                  <option value="Deluxe Alpine">Deluxe Alpine</option>
-                  <option value="Forest Chalet">Forest Chalet</option>
-                  <option value="Luxury Studio">Luxury Studio</option>
-                </select>
-              )}
+              <label className="block text-[11px] font-mono uppercase tracking-wider text-stone-600 mb-1.5 font-medium">
+                Floor / Level (Optional)
+              </label>
+              <input
+                type="text"
+                value={floor}
+                onChange={(e) => setFloor(e.target.value)}
+                placeholder="e.g. Floor 3, Ground Deck, Chalet Wing"
+                className="w-full bg-stone-50 border border-stone-300 rounded-lg px-3.5 py-2.5 text-sm text-stone-900 focus:outline-none focus:border-amber-600 focus:bg-white focus:ring-1 focus:ring-amber-500 transition-colors font-medium"
+              />
             </div>
 
             <div>

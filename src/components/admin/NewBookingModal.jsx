@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { X, Calendar, User, ShieldAlert, ArrowRight, Bed, Phone, Mail, MessageSquare } from 'lucide-react';
-import { FLOOR_CATEGORIES, RoomService } from '../../services/roomService';
+import { RoomService } from '../../services/roomService';
 import PolarisCalendar from '../common/PolarisCalendar';
 
 /**
@@ -38,6 +38,15 @@ export default function NewBookingModal({ isOpen, onClose, rooms, onSaveBooking,
   }, [initialRoomId, isOpen, rooms]);
 
   const selectedRoom = rooms.find((r) => r.id === selectedRoomId);
+
+  const roomCategories = useMemo(() => {
+    const set = new Set();
+    rooms.forEach((r) => {
+      const c = (r.category || r.floor || 'General Inventory').trim();
+      if (c) set.add(c);
+    });
+    return Array.from(set);
+  }, [rooms]);
 
   const bookedDates = useMemo(() => {
     if (!selectedRoom) return [];
@@ -115,19 +124,19 @@ export default function NewBookingModal({ isOpen, onClose, rooms, onSaveBooking,
               required
               className="w-full bg-stone-50 border border-stone-300 rounded-lg px-3.5 py-2.5 text-sm text-stone-900 focus:outline-none focus:border-rose-500 focus:bg-white transition-colors cursor-pointer"
             >
-              {FLOOR_CATEGORIES.map((cat) => {
-                const floorRooms = rooms.filter((r) => r.floor === cat);
-                if (floorRooms.length === 0) return null;
+              {roomCategories.map((cat) => {
+                const catRooms = rooms.filter((r) => (r.category || r.floor || 'General Inventory').trim() === cat);
+                if (catRooms.length === 0) return null;
 
                 return (
                   <optgroup 
                     key={cat} 
-                    label={cat === 'Top Suite' ? '👑 Top Suite (Summit Penthouse)' : cat}
+                    label={cat}
                     className="text-stone-800 font-semibold"
                   >
-                    {floorRooms.map((room) => (
+                    {catRooms.map((room) => (
                       <option key={room.id} value={room.id} className="text-stone-900">
-                        Room #{room.roomNumber} — {room.name} ({room.tier}) [Currently: {room.status.toUpperCase()}]
+                        Room #{room.roomNumber} — {room.name} ({room.category || room.tier || ''}) [Currently: {room.status.toUpperCase()}]
                       </option>
                     ))}
                   </optgroup>

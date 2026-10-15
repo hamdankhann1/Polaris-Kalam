@@ -30,7 +30,8 @@ import {
   Send,
   RefreshCw
 } from 'lucide-react';
-import { RoomService, FLOOR_CATEGORIES } from '../../services/roomService';
+import { RoomService } from '../../services/roomService';
+import { CategoryService } from '../../services/categoryService';
 import { BookingRequestService } from '../../services/bookingRequestService';
 import { POLARIS_CONFIG } from '../../polarisConfig';
 import StatusChangeModal from './StatusChangeModal';
@@ -41,6 +42,7 @@ import QuickPriceModal from './QuickPriceModal';
 import DeleteConfirmModal from './DeleteConfirmModal';
 import ClearAllRoomsModal from './ClearAllRoomsModal';
 import AddBookingRequestModal from './AddBookingRequestModal';
+import CategoryManagerModal from './CategoryManagerModal';
 
 /**
  * =========================================================================
@@ -91,6 +93,10 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
   // Add Booking Request Modal State
   const [addRequestModalOpen, setAddRequestModalOpen] = useState(false);
 
+  // Category Management State
+  const [customCategories, setCustomCategories] = useState([]);
+  const [categoryManagerModalOpen, setCategoryManagerModalOpen] = useState(false);
+
   // Other Modals
   const [newBookingModalOpen, setNewBookingModalOpen] = useState(false);
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
@@ -106,12 +112,14 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
   const handleManualSync = async () => {
     setIsSyncing(true);
     try {
-      const [freshRooms, freshRequests] = await Promise.all([
+      const [freshRooms, freshRequests, freshCategories] = await Promise.all([
         RoomService.getRooms(true),
-        BookingRequestService.getRequests(true)
+        BookingRequestService.getRequests(true),
+        CategoryService.getCategories(true)
       ]);
       setRooms(freshRooms);
       setBookingRequests(freshRequests);
+      setCustomCategories(freshCategories);
       const status = BookingRequestService.getConnectionStatus();
       setDbStatus(status);
       if (status.dbConnected) {
@@ -130,12 +138,14 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
   useEffect(() => {
     async function loadData() {
       setIsLoading(true);
-      const [roomsData, requestsData] = await Promise.all([
+      const [roomsData, requestsData, categoriesData] = await Promise.all([
         RoomService.getRooms(),
-        BookingRequestService.getRequests()
+        BookingRequestService.getRequests(),
+        CategoryService.getCategories()
       ]);
       setRooms(roomsData);
       setBookingRequests(requestsData);
+      setCustomCategories(categoriesData);
       setDbStatus(BookingRequestService.getConnectionStatus());
       setIsLoading(false);
     }
@@ -148,6 +158,10 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
 
     const unsubRequests = BookingRequestService.subscribe((updatedRequests) => {
       setBookingRequests(updatedRequests);
+    });
+
+    const unsubCategories = CategoryService.subscribe((updatedCategories) => {
+      setCustomCategories(updatedCategories);
     });
 
     // 2. Custom window event listeners for instantaneous cross-component updates
@@ -196,6 +210,7 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
     return () => {
       unsubRooms();
       unsubRequests();
+      unsubCategories();
       clearInterval(pollInterval);
       window.removeEventListener('polaris:booking-update', handleCustomBookingUpdate);
       window.removeEventListener('polaris:room-update', handleCustomRoomUpdate);
@@ -561,6 +576,19 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
   const stats = RoomService.calculateStats(rooms);
   const pendingRequestsCount = bookingRequests.filter((r) => r.status === 'pending').length;
 
+  // Active custom categories merged with current rooms
+  const activeCategories = useMemo(() => {
+    const set = new Set();
+    customCategories.forEach((c) => {
+      if (c.name && c.name.trim()) set.add(c.name.trim());
+    });
+    rooms.forEach((r) => {
+      const c = (r.category || r.floor || '').trim();
+      if (c) set.add(c);
+    });
+    return Array.from(set);
+  }, [customCategories, rooms]);
+
   // Filtered rooms
   const filteredRooms = rooms.filter((room) => {
     if (selectedStatusFilter === 'booked' || selectedStatusFilter === 'has_blocks') {
@@ -570,17 +598,18 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
     } else if (selectedStatusFilter !== 'all' && room.status !== selectedStatusFilter) {
       return false;
     }
-    if (selectedFloorFilter !== 'all' && room.floor !== selectedFloorFilter) {
+    if (selectedFloorFilter !== 'all' && (room.category || room.floor || 'General Inventory').trim() !== selectedFloorFilter) {
       return false;
     }
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       const matchNumber = room.roomNumber.toLowerCase().includes(q);
       const matchName = room.name.toLowerCase().includes(q);
-      const matchTier = room.tier.toLowerCase().includes(q);
-      const matchFloor = room.floor.toLowerCase().includes(q);
+      const matchCategory = (room.category || '').toLowerCase().includes(q);
+      const matchTier = (room.tier || '').toLowerCase().includes(q);
+      const matchFloor = (room.floor || '').toLowerCase().includes(q);
       const matchGuest = room.activeBooking?.guestName?.toLowerCase().includes(q);
-      return matchNumber || matchName || matchTier || matchFloor || matchGuest;
+      return matchNumber || matchName || matchCategory || matchTier || matchFloor || matchGuest;
     }
     return true;
   });
@@ -622,7 +651,7 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
                 isTopSuite ? 'text-[#B48A28] font-semibold' : 'text-stone-500'
               }`}>
                 {isTopSuite && <Crown className="w-3 h-3 text-[#B48A28]" />}
-                <span>{room.floor}</span>
+                <span>{room.category || room.floor}</span>
               </span>
 
               {hasPendingInquiry && (
@@ -652,7 +681,7 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
             </h3>
             
             <div className="flex items-center justify-between text-xs mt-1.5">
-              <span className="text-stone-500 text-[11.5px]">{room.tier}</span>
+              <span className="text-stone-500 text-[11.5px]">{room.category || room.tier}</span>
               
               <button
                 type="button"
@@ -1421,21 +1450,31 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
               </div>
             </div>
 
-            {/* FLOOR CATEGORIES SELECTOR STRIP */}
+            {/* ROOM CATEGORIES SELECTOR STRIP */}
             <div className="p-4 rounded-xl bg-white border border-stone-200 shadow-2xs space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-2">
                 <span className="text-[10px] font-mono uppercase tracking-widest text-stone-500 flex items-center space-x-1.5 font-medium">
                   <Layers className="w-3.5 h-3.5 text-[#B48A28]" />
-                  <span>Filter by Architectural Category:</span>
+                  <span>Room Categories ({activeCategories.length}):</span>
                 </span>
 
-                <button
-                  onClick={() => setGroupByFloor(!groupByFloor)}
-                  className="text-[10.5px] font-mono text-[#B48A28] hover:text-[#9E7719] transition-colors flex items-center space-x-1"
-                >
-                  <span>View Mode:</span>
-                  <span className="underline font-bold">{groupByFloor ? 'Grouped by Floor' : 'Combined Grid'}</span>
-                </button>
+                <div className="flex items-center space-x-3">
+                  <button
+                    onClick={() => setCategoryManagerModalOpen(true)}
+                    className="text-[11px] font-mono text-[#B48A28] hover:text-[#9E7719] font-semibold flex items-center space-x-1 px-2.5 py-1 rounded bg-amber-50 border border-amber-200 hover:bg-amber-100 transition-colors"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>Manage Categories</span>
+                  </button>
+
+                  <button
+                    onClick={() => setGroupByFloor(!groupByFloor)}
+                    className="text-[10.5px] font-mono text-stone-600 hover:text-stone-900 transition-colors flex items-center space-x-1"
+                  >
+                    <span>View:</span>
+                    <span className="underline font-bold text-stone-900">{groupByFloor ? 'Grouped by Category' : 'Combined Grid'}</span>
+                  </button>
+                </div>
               </div>
 
               <div className="flex items-center space-x-2 overflow-x-auto pb-1 scrollbar-none">
@@ -1447,34 +1486,25 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
                       : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100'
                   }`}
                 >
-                  All Floors ({rooms.length})
+                  All Categories ({rooms.length})
                 </button>
 
-                <button
-                  onClick={() => setSelectedFloorFilter('Top Suite')}
-                  className={`px-3.5 py-2 rounded-lg text-xs font-mono uppercase tracking-wider transition-all shrink-0 flex items-center space-x-1.5 ${
-                    selectedFloorFilter === 'Top Suite'
-                      ? 'bg-[#B48A28] text-white font-bold border border-[#B48A28] shadow-xs'
-                      : 'text-stone-600 hover:text-[#B48A28] hover:bg-amber-50'
-                  }`}
-                >
-                  <Crown className="w-3.5 h-3.5" />
-                  <span>Top Suite ({stats.byCategory?.['Top Suite'] || 0})</span>
-                </button>
-
-                {['Floor 4', 'Floor 3', 'Floor 2', 'Floor 1'].map((cat) => (
-                  <button
-                    key={cat}
-                    onClick={() => setSelectedFloorFilter(cat)}
-                    className={`px-3.5 py-2 rounded-lg text-xs font-mono uppercase tracking-wider transition-all shrink-0 ${
-                      selectedFloorFilter === cat
-                        ? 'bg-stone-900 text-white font-bold border border-stone-900 shadow-xs'
-                        : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100'
-                    }`}
-                  >
-                    {cat} ({stats.byCategory?.[cat] || 0})
-                  </button>
-                ))}
+                {activeCategories.map((cat) => {
+                  const count = stats.byCategory?.[cat] || rooms.filter((r) => (r.category || r.floor || '').trim() === cat).length;
+                  return (
+                    <button
+                      key={cat}
+                      onClick={() => setSelectedFloorFilter(cat)}
+                      className={`px-3.5 py-2 rounded-lg text-xs font-mono uppercase tracking-wider transition-all shrink-0 ${
+                        selectedFloorFilter === cat
+                          ? 'bg-[#B48A28] text-white font-bold border border-[#B48A28] shadow-xs'
+                          : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100'
+                      }`}
+                    >
+                      {cat} ({count})
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
@@ -1599,32 +1629,22 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
                 </div>
               </div>
             ) : groupByFloor && selectedFloorFilter === 'all' && !searchQuery.trim() ? (
-              // GROUPED BY FLOOR VIEW
+              // GROUPED BY CATEGORY VIEW
               <div className="space-y-10">
-                {Array.from(new Set([...FLOOR_CATEGORIES, ...rooms.map((r) => r.floor).filter(Boolean)])).map((cat) => {
-                  const categoryRooms = filteredRooms.filter((r) => r.floor === cat);
+                {activeCategories.map((cat) => {
+                  const categoryRooms = filteredRooms.filter((r) => (r.category || r.floor || 'General Inventory').trim() === cat);
                   if (categoryRooms.length === 0) return null;
-
-                  const isTop = cat === 'Top Suite';
 
                   return (
                     <div key={cat} className="space-y-4">
                       <div className="flex items-center justify-between pb-2 border-b border-stone-200">
                         <div className="flex items-center space-x-2.5">
-                          {isTop ? (
-                            <div className="w-6 h-6 rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center">
-                              <Crown className="w-3.5 h-3.5 text-[#B48A28]" />
-                            </div>
-                          ) : (
-                            <div className="w-6 h-6 rounded-full bg-stone-100 border border-stone-200 flex items-center justify-center font-mono text-[10px] text-stone-700 font-semibold">
-                              {cat.replace('Floor ', 'F')}
-                            </div>
-                          )}
+                          <div className="w-6 h-6 rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center font-mono text-[10px] text-[#B48A28] font-semibold">
+                            <Layers className="w-3.5 h-3.5 text-[#B48A28]" />
+                          </div>
                           
-                          <h2 className={`font-display text-lg tracking-wide ${
-                            isTop ? 'text-[#B48A28] font-semibold' : 'text-stone-900 font-medium'
-                          }`}>
-                            {isTop ? 'Top Suite — Presidential Summit Penthouse' : `${cat} Suites & Rooms`}
+                          <h2 className="font-display text-lg tracking-wide text-stone-900 font-medium">
+                            {cat}
                           </h2>
 
                           <span className="text-xs font-mono text-stone-500">
@@ -1870,6 +1890,18 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
           </div>
         </div>
       )}
+
+      {/* Category Manager Modal */}
+      <CategoryManagerModal
+        isOpen={categoryManagerModalOpen}
+        onClose={() => setCategoryManagerModalOpen(false)}
+        categories={customCategories}
+        rooms={rooms}
+        onCategoryUpdated={async () => {
+          const fresh = await CategoryService.getCategories(true);
+          setCustomCategories(fresh);
+        }}
+      />
 
     </div>
   );

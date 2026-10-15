@@ -341,6 +341,7 @@ export default async function handler(req, res) {
         }
         collection.createIndex({ id: 1 }, { unique: true }).catch(() => {});
         collection.createIndex({ roomNumber: 1 }).catch(() => {});
+        collection.createIndex({ category: 1 }).catch(() => {});
         collection.createIndex({ floor: 1 }).catch(() => {});
       } catch (seedErr) {
         console.warn('MongoDB initial room seed warning:', seedErr.message);

@@ -23,7 +23,6 @@ import {
 import { POLARIS_CONFIG } from "../../polarisConfig";
 import {
   RoomService,
-  FLOOR_CATEGORIES,
   groupRoomsByCategory,
   getAvailableRoomsForCategory,
   getCategoryBookedDates,
@@ -269,6 +268,7 @@ export default function BookingPage({
   const filteredCategories = useMemo(() => {
     if (selectedFloor === "all") return categories;
     return categories.filter((cat) => {
+      if (cat.name === selectedFloor) return true;
       if (cat.floor === selectedFloor) return true;
       if (Array.isArray(cat.floors) && cat.floors.includes(selectedFloor)) return true;
       if (cat.tier === selectedFloor) return true;
@@ -526,27 +526,33 @@ export default function BookingPage({
                         {cat.name}
                       </h3>
                       <p className="text-xs sm:text-sm text-stone-600 mt-1.5 font-medium">
-                        {cat.tier} • {cat.capacity}
+                        {cat.capacity}
                       </p>
-                      <p className="text-[11px] font-mono text-stone-500 mt-1">
-                        {cat.floors.length === 1
-                          ? cat.floors[0]
-                          : `Levels: ${cat.floors.join(", ")}`}
-                      </p>
+                      {cat.floors && cat.floors.length > 0 && cat.floors.some((f) => f && f !== cat.name) && (
+                        <p className="text-[11px] font-mono text-stone-500 mt-1">
+                          Levels: {cat.floors.filter((f) => f && f !== cat.name).join(", ")}
+                        </p>
+                      )}
                     </div>
 
                     {/* Nightly Allocation Price Tag */}
-                    <div className="pt-2.5 pb-2 border-t border-b border-stone-200/90 flex items-baseline justify-between">
-                      <span className="text-xs font-mono uppercase tracking-wider text-stone-600 font-semibold">
-                        Nightly Allocation
+                    <div className="pt-3 pb-2.5 border-t border-b border-stone-200/90 flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1.5">
+                      <span className="text-[11px] sm:text-xs font-mono uppercase tracking-wider text-stone-500 font-medium">
+                        Nightly Rate
                       </span>
-                      <div className="flex items-baseline space-x-1">
-                        <span className="text-2xl sm:text-3xl font-mono font-bold text-[#8A661C]">
-                          {cat.minPrice === cat.maxPrice
-                            ? `PKR ${cat.minPrice.toLocaleString()}`
-                            : `From PKR ${cat.minPrice.toLocaleString()}`}
+                      <div className="flex flex-wrap items-baseline gap-1 sm:gap-1.5">
+                        {cat.minPrice !== cat.maxPrice && (
+                          <span className="text-xs sm:text-sm font-sans font-medium text-stone-500">
+                            From
+                          </span>
+                        )}
+                        <span className="text-xs sm:text-sm font-sans font-bold text-stone-700 tracking-tight">
+                          PKR
                         </span>
-                        <span className="text-xs sm:text-sm font-mono text-stone-600 font-medium">
+                        <span className="text-2xl sm:text-3xl font-sans font-bold text-[#8A661C] tracking-tight">
+                          {cat.minPrice.toLocaleString()}
+                        </span>
+                        <span className="text-xs sm:text-sm font-sans text-stone-500 font-normal">
                           / night
                         </span>
                       </div>
@@ -679,10 +685,17 @@ export default function BookingPage({
                   <h3 className="font-display text-2xl sm:text-3xl text-stone-900 font-medium pt-1">
                     {selectedCategory.name}
                   </h3>
-                  <p className="text-sm sm:text-base text-[#8A661C] font-mono font-bold">
-                    PKR {selectedCategory.minPrice.toLocaleString()} / night •{" "}
-                    {selectedCategory.capacity}
-                  </p>
+                  <div className="flex flex-wrap items-baseline gap-1.5 pt-1.5">
+                    <span className="text-xs sm:text-sm font-sans font-bold text-stone-700">PKR</span>
+                    <span className="text-xl sm:text-2xl font-sans font-bold text-[#8A661C] tracking-tight">
+                      {selectedCategory.minPrice.toLocaleString()}
+                    </span>
+                    <span className="text-xs sm:text-sm font-sans text-stone-500 font-normal">/ night</span>
+                    <span className="text-stone-300 mx-1">•</span>
+                    <span className="text-xs sm:text-sm font-sans text-stone-600 font-normal">
+                      {selectedCategory.capacity}
+                    </span>
+                  </div>
                 </div>
 
                 <form

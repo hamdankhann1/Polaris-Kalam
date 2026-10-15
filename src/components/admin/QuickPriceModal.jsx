@@ -60,7 +60,7 @@ export default function QuickPriceModal({ isOpen, onClose, room, onSavePrice }) 
             <div className="flex items-center space-x-2 font-mono text-xs text-stone-500">
               <span className="px-2 py-0.5 rounded bg-stone-100 text-stone-800 border border-stone-200 font-bold">ROOM #{room.roomNumber}</span>
               <span>•</span>
-              <span className="text-[#8A661C] font-semibold">{room.floor}</span>
+              <span className="text-[#8A661C] font-semibold">{room.category || room.floor}</span>
             </div>
             <h3 className="font-display text-lg text-stone-900 font-medium">
               Update Nightly Rate

@@ -17,14 +17,21 @@
  * 4. Update Room Nightly Prices & Specifications
  */
 
-// The 5 Official Architectural Categories: 4 Floors + 1 Top Suite
-export const FLOOR_CATEGORIES = [
-  'Top Suite',
-  'Floor 4',
-  'Floor 3',
-  'Floor 2',
-  'Floor 1'
-];
+// Predefined architectural categories removed — categories are now 100% user-defined
+export const FLOOR_CATEGORIES = [];
+
+/**
+ * Helper: Extract distinct user-defined categories from current rooms
+ */
+export function getDistinctCategories(rooms = []) {
+  if (!Array.isArray(rooms)) return [];
+  const set = new Set();
+  rooms.forEach((r) => {
+    const c = (r.category || r.floor || '').trim();
+    if (c) set.add(c);
+  });
+  return Array.from(set);
+}
 
 /**
  * Helper: Given checkIn and checkOut (YYYY-MM-DD), return array of all occupied night dates [checkIn, checkOut)
@@ -113,15 +120,15 @@ export function groupRoomsByCategory(rooms = [], requests = []) {
   const map = new Map();
 
   rooms.forEach((room) => {
-    // Group primarily by room name, falling back to tier
-    const key = (room.name || room.tier || 'Deluxe Room').trim();
+    // Group primarily by custom category, falling back to room name or tier
+    const key = (room.category || room.name || room.tier || 'Deluxe Room').trim();
 
     if (!map.has(key)) {
       map.set(key, {
         id: 'cat-' + key.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
-        name: room.name || key,
-        tier: room.tier || 'Deluxe Alpine',
-        floor: room.floor || 'Floor 1',
+        name: key,
+        tier: room.category || room.tier || key,
+        floor: room.floor || '',
         floors: [room.floor].filter(Boolean),
         capacity: room.capacity || '2 Guests • 1 King Bed',
         pricePKR: Number(room.pricePKR) || 45000,
@@ -543,8 +550,9 @@ export const RoomService = {
       id: 'room-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
       roomNumber: roomData.roomNumber.trim(),
       name: roomData.name.trim(),
-      tier: roomData.tier || 'Deluxe Alpine',
-      floor: roomData.floor || 'Floor 1',
+      category: (roomData.category || roomData.tier || roomData.floor || 'Deluxe Room').trim(),
+      tier: (roomData.tier || roomData.category || 'Deluxe Room').trim(),
+      floor: (roomData.floor || roomData.category || '').trim(),
       capacity: roomData.capacity || '2 Guests • 1 King Bed',
       pricePKR: Number(roomData.pricePKR) || 45000,
       status: roomData.status || 'available',
@@ -650,6 +658,7 @@ export const RoomService = {
     };
     if (fields.roomNumber) payload.roomNumber = fields.roomNumber.trim();
     if (fields.name) payload.name = fields.name.trim();
+    if (fields.category) payload.category = fields.category.trim();
     if (fields.pricePKR !== undefined) payload.pricePKR = Number(fields.pricePKR);
     if (fields.amenities) {
       payload.amenities = Array.isArray(fields.amenities)
@@ -923,13 +932,11 @@ export const RoomService = {
     const booked = hasBookedRanges;
     const occupancyRate = total > 0 ? Math.round((hasBookedRanges / total) * 100) : 0;
 
-    const byCategory = {
-      'Top Suite': rooms.filter((r) => r.floor === 'Top Suite').length,
-      'Floor 4': rooms.filter((r) => r.floor === 'Floor 4').length,
-      'Floor 3': rooms.filter((r) => r.floor === 'Floor 3').length,
-      'Floor 2': rooms.filter((r) => r.floor === 'Floor 2').length,
-      'Floor 1': rooms.filter((r) => r.floor === 'Floor 1').length,
-    };
+    const byCategory = {};
+    rooms.forEach((r) => {
+      const catKey = (r.category || r.floor || 'General Inventory').trim();
+      byCategory[catKey] = (byCategory[catKey] || 0) + 1;
+    });
 
     return {
       total,

@@ -69,9 +69,13 @@ export default function RoomDetailsModal({
               {room.name}
             </h3>
             <p className="text-xs text-stone-500 font-light flex items-center space-x-3">
-              <span>{room.tier}</span>
-              <span>•</span>
-              <span>{room.floor}</span>
+              <span>{room.category || room.tier}</span>
+              {room.floor && room.floor !== (room.category || room.tier) && (
+                <>
+                  <span>•</span>
+                  <span>{room.floor}</span>
+                </>
+              )}
               <span>•</span>
               <span className="text-[#B48A28] font-mono font-semibold">PKR {room.pricePKR.toLocaleString()} / night</span>
             </p>
@@ -291,7 +295,7 @@ export default function RoomDetailsModal({
               </div>
               <div className="p-3 rounded-lg bg-stone-50 border border-stone-200 flex items-center space-x-3 text-stone-800 font-medium">
                 <MapPin className="w-4 h-4 text-[#B48A28] shrink-0" />
-                <span>{room.floor}</span>
+                <span>{room.category || room.floor}</span>
               </div>
             </div>
 
