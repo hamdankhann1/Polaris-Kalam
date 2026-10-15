@@ -17,9 +17,17 @@ import {
   ArrowRight,
   MessageSquare,
   Lock,
+  AlertCircle,
+  Layers,
 } from "lucide-react";
 import { POLARIS_CONFIG } from "../../polarisConfig";
-import { RoomService, FLOOR_CATEGORIES } from "../../services/roomService";
+import {
+  RoomService,
+  FLOOR_CATEGORIES,
+  groupRoomsByCategory,
+  getAvailableRoomsForCategory,
+  getCategoryBookedDates,
+} from "../../services/roomService";
 import { BookingRequestService } from "../../services/bookingRequestService";
 import PolarisCalendar from "../common/PolarisCalendar";
 
@@ -44,8 +52,8 @@ export default function BookingPage({
   const [isLoading, setIsLoading] = useState(true);
   const [selectedFloor, setSelectedFloor] = useState("all");
 
-  // Booking Modal State
-  const [selectedRoom, setSelectedRoom] = useState(null);
+  // Booking Modal State (Operates on high-level Room Category)
+  const [selectedCategory, setSelectedCategory] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   // Form State
@@ -133,36 +141,47 @@ export default function BookingPage({
     };
   }, []);
 
-  // Keep selectedRoom in sync with latest live room data from database
+  // Compute distinct Room Categories / Types from the database rooms & live bookings
+  const categories = useMemo(() => {
+    return groupRoomsByCategory(rooms, bookingRequests);
+  }, [rooms, bookingRequests]);
+
+  // Keep selectedCategory in sync with latest live room data from database
   useEffect(() => {
-    if (selectedRoom) {
-      const live = rooms.find((r) => r.id === selectedRoom.id);
-      if (live && JSON.stringify(live) !== JSON.stringify(selectedRoom)) {
-        setSelectedRoom(live);
+    if (selectedCategory) {
+      const live = categories.find(
+        (c) => c.id === selectedCategory.id || c.name === selectedCategory.name
+      );
+      if (live && JSON.stringify(live) !== JSON.stringify(selectedCategory)) {
+        setSelectedCategory(live);
       }
     }
-  }, [rooms, selectedRoom]);
+  }, [categories, selectedCategory]);
 
-  // Compute all booked dates for the currently selected room
-  const bookedDates = useMemo(() => {
-    if (!selectedRoom) return [];
-    return RoomService.getBookedDatesForRoomSync(selectedRoom, bookingRequests);
-  }, [selectedRoom, bookingRequests]);
+  // Compute live available rooms within the selected category for the selected date range
+  const availableRoomsForRange = useMemo(() => {
+    if (!selectedCategory || !checkIn || !checkOut) {
+      return selectedCategory ? selectedCategory.rooms : [];
+    }
+    return getAvailableRoomsForCategory(
+      selectedCategory.rooms,
+      checkIn,
+      checkOut,
+      bookingRequests
+    );
+  }, [selectedCategory, checkIn, checkOut, bookingRequests]);
 
-  const handleOpenBooking = (room) => {
-    setSelectedRoom(room);
+  const handleOpenBooking = (category) => {
+    setSelectedCategory(category);
     setIsSuccess(false);
 
-    const roomBooked = RoomService.getBookedDatesForRoomSync(
-      room,
-      bookingRequests,
-    );
+    const catBooked = category.bookedDates || [];
     const today = new Date().toISOString().split("T")[0];
 
     // Find next available start date beginning from today
     let startD = today;
     const cur = new Date(today + "T00:00:00");
-    while (roomBooked.includes(startD)) {
+    while (catBooked.includes(startD)) {
       cur.setDate(cur.getDate() + 1);
       const pad = (n) => String(n).padStart(2, "0");
       startD = `${cur.getFullYear()}-${pad(cur.getMonth() + 1)}-${pad(cur.getDate())}`;
@@ -174,11 +193,11 @@ export default function BookingPage({
     const pad = (n) => String(n).padStart(2, "0");
     let endStr = `${endD.getFullYear()}-${pad(endD.getMonth() + 1)}-${pad(endD.getDate())}`;
 
-    // If any night in between is booked, leave checkout blank so guest picks
+    // If any night in between has zero suites available, leave checkout blank so guest picks
     const nights = RoomService.getBookedNightsInRange
       ? RoomService.getBookedNightsInRange(startD, endStr)
       : [];
-    const overlaps = nights.some((d) => roomBooked.includes(d));
+    const overlaps = nights.some((d) => catBooked.includes(d));
     if (overlaps) {
       endStr = "";
     }
@@ -190,14 +209,32 @@ export default function BookingPage({
 
   const handleSubmitRequest = async (e) => {
     e.preventDefault();
-    if (!selectedRoom || isSubmitting) return;
+    if (!selectedCategory || isSubmitting) return;
 
     if (!checkIn || !checkOut) {
       alert(
-        "Please select both your Check-In and Check-Out dates on the suite calendar.",
+        "Please select both your Check-In and Check-Out dates on the suite calendar."
       );
       return;
     }
+
+    // Check available suites in this category for the requested stay
+    const available = getAvailableRoomsForCategory(
+      selectedCategory.rooms,
+      checkIn,
+      checkOut,
+      bookingRequests
+    );
+
+    if (!available || available.length === 0) {
+      alert(
+        `All ${selectedCategory.totalRooms} suites in "${selectedCategory.name}" are occupied for the dates ${checkIn} to ${checkOut}. Please choose alternative dates.`
+      );
+      return;
+    }
+
+    // Automatically allocate the first available suite of this category
+    const assignedRoom = available[0];
 
     setIsSubmitting(true);
     try {
@@ -205,33 +242,40 @@ export default function BookingPage({
         guestName,
         phone,
         email,
-        roomId: selectedRoom.id,
-        roomNumber: selectedRoom.roomNumber,
-        roomName: selectedRoom.name,
-        tier: selectedRoom.tier,
-        floor: selectedRoom.floor,
-        pricePKR: selectedRoom.pricePKR,
+        roomId: assignedRoom.id,
+        roomNumber: assignedRoom.roomNumber,
+        roomName: selectedCategory.name,
+        tier: selectedCategory.tier,
+        floor: assignedRoom.floor,
+        pricePKR: assignedRoom.pricePKR,
         checkIn,
         checkOut,
         guests,
-        notes,
+        notes: notes
+          ? `${notes} [Category: ${selectedCategory.name} • Auto-Allocated Suite #${assignedRoom.roomNumber}]`
+          : `Category: ${selectedCategory.name} • Auto-Allocated Suite #${assignedRoom.roomNumber}`,
       });
 
       setIsSuccess(true);
     } catch (err) {
       console.error("Error submitting booking request:", err);
-      alert("Failed to submit request. Please try again.");
+      alert("Failed to submit request: " + (err.message || "Please try again."));
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const filteredRooms = rooms.filter((room) => {
-    if (selectedFloor !== "all" && room.floor !== selectedFloor) {
+  // Filter categories by floor or tier if selected
+  const filteredCategories = useMemo(() => {
+    if (selectedFloor === "all") return categories;
+    return categories.filter((cat) => {
+      if (cat.floor === selectedFloor) return true;
+      if (Array.isArray(cat.floors) && cat.floors.includes(selectedFloor)) return true;
+      if (cat.tier === selectedFloor) return true;
+      if (cat.id === selectedFloor) return true;
       return false;
-    }
-    return true;
-  });
+    });
+  }, [categories, selectedFloor]);
 
   return (
     <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-[#FAF9F5] text-stone-900 flex flex-col font-sans selection:bg-amber-200 selection:text-stone-900">
@@ -338,9 +382,9 @@ export default function BookingPage({
       </section>
 
       {/* =========================================================================
-          CATEGORY / FLOOR FILTER TABS
+          CATEGORY / ROOM TYPE FILTER TABS
           ========================================================================= */}
-      {rooms.length > 0 && (
+      {categories.length > 0 && (
         <div className="max-w-7xl mx-auto px-2 sm:px-6 w-full max-w-full mb-8 overflow-hidden">
           <div className="flex items-center justify-start sm:justify-center space-x-2 overflow-x-auto pb-2 px-2 scrollbar-none w-full max-w-full">
             <button
@@ -351,20 +395,19 @@ export default function BookingPage({
                   : "bg-white text-stone-700 hover:text-stone-900 border border-stone-300 shadow-2xs"
               }`}
             >
-              All Suites ({rooms.length})
+              All Room Types ({categories.length} Categories • {rooms.length} Suites)
             </button>
 
-            {Array.from(new Set([...FLOOR_CATEGORIES, ...rooms.map((r) => r.floor).filter(Boolean)])).map((cat) => {
-              const count = rooms.filter((r) => r.floor === cat).length;
-              if (count === 0 && !FLOOR_CATEGORIES.includes(cat)) return null;
-              const isTop = cat === "Top Suite";
+            {categories.map((cat) => {
+              const isSelected = selectedFloor === cat.name || selectedFloor === cat.id;
+              const isTop = cat.tier?.toLowerCase().includes("top") || cat.floor === "Top Suite";
 
               return (
                 <button
-                  key={cat}
-                  onClick={() => setSelectedFloor(cat)}
+                  key={cat.id || cat.name}
+                  onClick={() => setSelectedFloor(isSelected ? "all" : cat.name)}
                   className={`px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-mono uppercase tracking-wider transition-all shrink-0 flex items-center space-x-1.5 font-semibold ${
-                    selectedFloor === cat
+                    isSelected
                       ? "bg-[#B48A28] text-white font-bold shadow-xs"
                       : isTop
                         ? "bg-amber-50 text-[#8A661C] border border-amber-300 hover:bg-amber-100/60 font-bold"
@@ -375,7 +418,7 @@ export default function BookingPage({
                     <Crown className="w-3.5 h-3.5 text-[#B48A28] shrink-0" />
                   )}
                   <span>
-                    {cat} ({count})
+                    {cat.name} ({cat.totalRooms})
                   </span>
                 </button>
               );
@@ -385,14 +428,14 @@ export default function BookingPage({
       )}
 
       {/* =========================================================================
-          ROOMS GRID
+          ROOM CATEGORIES GRID
           ========================================================================= */}
       <main className="max-w-7xl mx-auto px-3 sm:px-6 pb-20 sm:pb-24 w-full max-w-full flex-1">
         {isLoading ? (
           <div className="py-20 text-center text-stone-600 font-mono text-sm sm:text-base font-medium">
-            Loading suites and availability...
+            Loading room categories and availability...
           </div>
-        ) : rooms.length === 0 ? (
+        ) : categories.length === 0 ? (
           <div className="py-16 sm:py-24 text-center rounded-3xl bg-white border border-stone-200/90 p-8 sm:p-12 shadow-xs max-w-2xl mx-auto my-6 space-y-5 animate-fadeIn">
             <div className="w-16 h-16 rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center text-[#B48A28] mx-auto shadow-2xs">
               <Sparkles className="w-8 h-8 text-[#B48A28]" />
@@ -424,21 +467,19 @@ export default function BookingPage({
               </button>
             </div>
           </div>
-        ) : filteredRooms.length === 0 ? (
+        ) : filteredCategories.length === 0 ? (
           <div className="py-16 text-center text-stone-600 font-mono text-sm sm:text-base font-medium">
-            No suites currently listed for this category.
+            No suites currently listed for this category filter.
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
-            {filteredRooms.map((room) => {
-              const isAvailable = room.status === "available";
-              const isBooked = room.status === "booked";
-              const isCleaning = room.status === "in cleaning";
-              const isTop = room.floor === "Top Suite";
+            {filteredCategories.map((cat) => {
+              const isTop = cat.tier?.toLowerCase().includes("top") || cat.floor === "Top Suite";
+              const hasAvailableNow = cat.availableRoomsNow > 0;
 
               return (
                 <div
-                  key={room.id}
+                  key={cat.id || cat.name}
                   className={`relative rounded-2xl bg-white border flex flex-col justify-between overflow-hidden transition-all duration-300 group hover:translate-y-[-2px] ${
                     isTop
                       ? "border-amber-300 shadow-[0_4px_25px_rgba(180,138,40,0.12)] hover:shadow-[0_12px_32px_rgba(180,138,40,0.18)]"
@@ -447,62 +488,63 @@ export default function BookingPage({
                 >
                   {/* Card Header & Content */}
                   <div className="p-5 sm:p-7 space-y-5">
-                    {/* Top Row: Room number & Status badge */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-2">
+                    {/* Top Row: Tier badge, Total suites count badge & Live status */}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center space-x-2 min-w-0">
                         <span
-                          className={`font-mono text-xs sm:text-sm px-3 py-1 rounded font-bold ${
+                          className={`font-mono text-xs sm:text-sm px-3 py-1 rounded font-bold truncate ${
                             isTop
                               ? "bg-[#B48A28] text-white"
                               : "bg-stone-100 text-stone-900 border border-stone-300"
                           }`}
                         >
-                          #{room.roomNumber}
+                          {cat.tier}
                         </span>
 
-                        <span
-                          className={`text-xs sm:text-sm font-mono ${
-                            isTop
-                              ? "text-[#8A661C] font-bold"
-                              : "text-stone-700 font-semibold"
-                          }`}
-                        >
-                          {room.floor}
+                        <span className="text-xs font-mono text-stone-600 font-semibold px-2 py-0.5 rounded bg-stone-50 border border-stone-200 shrink-0">
+                          {cat.totalRooms} {cat.totalRooms === 1 ? "Suite" : "Suites"}
                         </span>
                       </div>
 
-                      {/* Status indicator */}
-                      {isCleaning ? (
-                        <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-mono uppercase tracking-wider bg-amber-50 border border-amber-300 text-amber-900 font-bold">
-                          <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-                          <span>Turnover</span>
+                      {/* Live status badge */}
+                      {hasAvailableNow ? (
+                        <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-mono uppercase tracking-wider bg-emerald-50 border border-emerald-300 text-emerald-800 font-bold shrink-0">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                          <span>{cat.availableRoomsNow} Available</span>
                         </span>
                       ) : (
-                        <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-mono uppercase tracking-wider bg-emerald-50 border border-emerald-300 text-emerald-800 font-bold">
-                          <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                          <span>Available</span>
+                        <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-mono uppercase tracking-wider bg-amber-50 border border-amber-300 text-amber-900 font-bold shrink-0">
+                          <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                          <span>Turnover</span>
                         </span>
                       )}
                     </div>
 
-                    {/* Suite Title & Tier */}
+                    {/* Suite Category Title & Specs */}
                     <div>
-                      <h3 className="font-display text-2xl sm:text-3xl text-stone-900 font-medium group-hover:text-[#B48A28] transition-colors">
-                        {room.name}
+                      <h3 className="font-display text-2xl sm:text-3xl text-stone-900 font-medium group-hover:text-[#B48A28] transition-colors leading-snug">
+                        {cat.name}
                       </h3>
                       <p className="text-xs sm:text-sm text-stone-600 mt-1.5 font-medium">
-                        {room.tier} • {room.capacity}
+                        {cat.tier} • {cat.capacity}
+                      </p>
+                      <p className="text-[11px] font-mono text-stone-500 mt-1">
+                        {cat.floors.length === 1
+                          ? cat.floors[0]
+                          : `Levels: ${cat.floors.join(", ")}`}
                       </p>
                     </div>
 
-                    {/* Price Tag */}
+                    {/* Nightly Allocation Price Tag */}
                     <div className="pt-2.5 pb-2 border-t border-b border-stone-200/90 flex items-baseline justify-between">
                       <span className="text-xs font-mono uppercase tracking-wider text-stone-600 font-semibold">
                         Nightly Allocation
                       </span>
                       <div className="flex items-baseline space-x-1">
                         <span className="text-2xl sm:text-3xl font-mono font-bold text-[#8A661C]">
-                          PKR {room.pricePKR.toLocaleString()}
+                          {cat.minPrice === cat.maxPrice
+                            ? `PKR ${cat.minPrice.toLocaleString()}`
+                            : `From PKR ${cat.minPrice.toLocaleString()}`}
                         </span>
                         <span className="text-xs sm:text-sm font-mono text-stone-600 font-medium">
                           / night
@@ -513,10 +555,10 @@ export default function BookingPage({
                     {/* Key Amenities */}
                     <div className="space-y-2">
                       <span className="text-xs font-mono uppercase tracking-wider text-stone-700 font-bold block">
-                        Suite Amenities:
+                        Category Amenities:
                       </span>
                       <div className="flex flex-wrap gap-1.5 sm:gap-2">
-                        {room.amenities.map((item, idx) => (
+                        {cat.amenities.slice(0, 5).map((item, idx) => (
                           <span
                             key={idx}
                             className="text-xs px-2.5 py-1 rounded-md bg-stone-100 border border-stone-200 text-stone-800 font-medium"
@@ -524,31 +566,28 @@ export default function BookingPage({
                             {item}
                           </span>
                         ))}
+                        {cat.amenities.length > 5 && (
+                          <span className="text-xs px-2 py-1 rounded-md bg-amber-50 text-amber-800 font-mono font-semibold">
+                            +{cat.amenities.length - 5} more
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
 
                   {/* Card Action Button */}
-                  <div className="p-5 sm:p-7 pt-0">
-                    {isCleaning ? (
-                      <button
-                        onClick={() => handleOpenBooking(room)}
-                        className="w-full py-3.5 rounded-xl text-xs sm:text-sm font-mono uppercase tracking-wider bg-amber-50 hover:bg-amber-100/80 border border-amber-300 text-[#8A661C] font-bold transition-all flex items-center justify-center space-x-2 shadow-2xs"
-                      >
-                        <Calendar className="w-4 h-4 text-amber-600" />
-                        <span>In Turnover • Book Upcoming Stay</span>
-                        <ArrowRight className="w-4 h-4 text-amber-600" />
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => handleOpenBooking(room)}
-                        className="w-full py-3.5 rounded-xl text-xs sm:text-sm font-mono uppercase tracking-wider bg-[#B48A28] hover:bg-[#9E7719] text-white font-bold transition-all flex items-center justify-center space-x-2 shadow-sm hover:shadow-md"
-                      >
-                        <Calendar className="w-4 h-4 text-white" />
-                        <span>Select Dates & Reserve</span>
-                        <ArrowRight className="w-4 h-4" />
-                      </button>
-                    )}
+                  <div className="p-5 sm:p-7 pt-0 space-y-1.5">
+                    <button
+                      onClick={() => handleOpenBooking(cat)}
+                      className="w-full py-3.5 rounded-xl text-xs sm:text-sm font-mono uppercase tracking-wider bg-[#B48A28] hover:bg-[#9E7719] text-white font-bold transition-all flex items-center justify-center space-x-2 shadow-sm hover:shadow-md"
+                    >
+                      <Calendar className="w-4 h-4 text-white" />
+                      <span>Select Dates & Check Availability</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </button>
+                    <p className="text-[10.5px] font-mono text-stone-500 text-center">
+                      Live occupancy computed across {cat.totalRooms} {cat.totalRooms === 1 ? "suite" : "suites"}
+                    </p>
                   </div>
                 </div>
               );
@@ -558,9 +597,9 @@ export default function BookingPage({
       </main>
 
       {/* =========================================================================
-          RESERVATION REQUEST MODAL
+          RESERVATION REQUEST MODAL (Operates on Selected Room Category)
           ========================================================================= */}
-      {isModalOpen && selectedRoom && (
+      {isModalOpen && selectedCategory && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-stone-900/60 backdrop-blur-md animate-fadeIn">
           <div
             className="relative w-full max-w-2xl bg-white border border-stone-200 rounded-2xl shadow-2xl p-5 sm:p-8 md:p-10 text-stone-900 max-h-[92vh] overflow-y-auto"
@@ -596,7 +635,7 @@ export default function BookingPage({
                     </strong>
                     . Your reservation inquiry for{" "}
                     <strong className="font-semibold text-stone-900">
-                      Room #{selectedRoom.roomNumber} ({selectedRoom.name})
+                      {selectedCategory.name} ({selectedCategory.tier})
                     </strong>{" "}
                     has been received by our private concierge.
                   </p>
@@ -621,7 +660,7 @@ export default function BookingPage({
                   onClick={() => setIsModalOpen(false)}
                   className="px-6 py-3 rounded-xl bg-[#B48A28] hover:bg-[#9E7719] text-white text-xs sm:text-sm font-mono uppercase tracking-wider font-bold transition-all shadow-xs"
                 >
-                  Return to Suites
+                  Return to Room Types
                 </button>
               </div>
             ) : (
@@ -630,18 +669,19 @@ export default function BookingPage({
                 <div className="space-y-1 pb-4 border-b border-stone-200">
                   <div className="flex items-center space-x-2 font-mono text-xs sm:text-sm">
                     <span className="px-2.5 py-1 rounded bg-[#B48A28] text-white font-bold">
-                      ROOM #{selectedRoom.roomNumber}
+                      {selectedCategory.tier}
                     </span>
                     <span className="text-stone-600 font-semibold">
-                      {selectedRoom.floor}
+                      {selectedCategory.totalRooms}{" "}
+                      {selectedCategory.totalRooms === 1 ? "Suite in Hotel" : "Suites in Hotel"}
                     </span>
                   </div>
                   <h3 className="font-display text-2xl sm:text-3xl text-stone-900 font-medium pt-1">
-                    {selectedRoom.name}
+                    {selectedCategory.name}
                   </h3>
                   <p className="text-sm sm:text-base text-[#8A661C] font-mono font-bold">
-                    PKR {selectedRoom.pricePKR.toLocaleString()} / night •{" "}
-                    {selectedRoom.capacity}
+                    PKR {selectedCategory.minPrice.toLocaleString()} / night •{" "}
+                    {selectedCategory.capacity}
                   </p>
                 </div>
 
@@ -704,11 +744,51 @@ export default function BookingPage({
                     </div>
                   </div>
 
-                  {/* Luxury Polaris Calendar Date Picker */}
-                  <div className="pt-1">
-                    <label className="block text-xs sm:text-sm font-mono uppercase tracking-wider text-stone-800 mb-2 font-bold">
-                      Stay Dates (Check-In & Check-Out) *
-                    </label>
+                  {/* Luxury Polaris Calendar Date Picker & Real-Time Category Availability */}
+                  <div className="pt-1 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs sm:text-sm font-mono uppercase tracking-wider text-stone-800 font-bold">
+                        Stay Dates (Check-In & Check-Out) *
+                      </label>
+                      {checkIn && checkOut && (
+                        <span className="text-xs font-mono font-semibold text-stone-500">
+                          {checkIn} → {checkOut}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Real-Time Live Occupancy Feedback */}
+                    {checkIn && checkOut && (
+                      availableRoomsForRange.length > 0 ? (
+                        <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-300 text-xs sm:text-sm text-emerald-950 flex items-center justify-between font-mono animate-fadeIn">
+                          <span className="flex items-center space-x-1.5 font-bold">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                            <span>
+                              {availableRoomsForRange.length} of {selectedCategory.totalRooms}{" "}
+                              {selectedCategory.totalRooms === 1 ? "suite" : "suites"} available for your stay
+                            </span>
+                          </span>
+                          {availableRoomsForRange.length === 1 && (
+                            <span className="text-amber-900 font-bold text-[10.5px] uppercase bg-amber-200/90 px-2 py-0.5 rounded shrink-0">
+                              🔥 Only 1 Suite Left!
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-300 text-xs sm:text-sm text-rose-950 space-y-1 animate-fadeIn">
+                          <div className="flex items-center space-x-1.5 font-bold text-rose-800">
+                            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                            <span>
+                              All {selectedCategory.totalRooms} Suites in this Category are Booked
+                            </span>
+                          </div>
+                          <p className="text-xs text-stone-600 font-normal">
+                            No suites are available for the entire stay from {checkIn} to {checkOut}.
+                            Please pick alternative dates on the calendar or explore other room categories.
+                          </p>
+                        </div>
+                      )
+                    )}
 
                     <PolarisCalendar
                       checkIn={checkIn}
@@ -717,10 +797,9 @@ export default function BookingPage({
                         setCheckIn(cIn);
                         setCheckOut(cOut);
                       }}
-                      bookedDates={bookedDates}
-                      pricePKR={selectedRoom.pricePKR}
-                      roomName={selectedRoom.name}
-                      roomNumber={selectedRoom.roomNumber}
+                      bookedDates={selectedCategory.bookedDates}
+                      pricePKR={selectedCategory.minPrice}
+                      roomName={selectedCategory.name}
                     />
                   </div>
 
@@ -756,13 +835,22 @@ export default function BookingPage({
                   <div className="pt-2">
                     <button
                       type="submit"
-                      disabled={isSubmitting}
-                      className="w-full py-3.5 sm:py-4 rounded-xl text-xs sm:text-sm font-mono uppercase tracking-wider bg-[#B48A28] hover:bg-[#9E7719] text-white font-bold transition-all flex items-center justify-center space-x-2 shadow-sm hover:shadow-md"
+                      disabled={
+                        isSubmitting ||
+                        Boolean(checkIn && checkOut && availableRoomsForRange.length === 0)
+                      }
+                      className={`w-full py-3.5 sm:py-4 rounded-xl text-xs sm:text-sm font-mono uppercase tracking-wider font-bold transition-all flex items-center justify-center space-x-2 shadow-sm ${
+                        checkIn && checkOut && availableRoomsForRange.length === 0
+                          ? "bg-stone-300 text-stone-500 cursor-not-allowed"
+                          : "bg-[#B48A28] hover:bg-[#9E7719] text-white hover:shadow-md cursor-pointer"
+                      }`}
                     >
                       <Send className="w-4 h-4" />
                       <span>
                         {isSubmitting
                           ? "Transmitting Request..."
+                          : checkIn && checkOut && availableRoomsForRange.length === 0
+                          ? "Sold Out for Selected Dates"
                           : "Submit Reservation Request"}
                       </span>
                     </button>

@@ -57,6 +57,114 @@ export function formatYMD(date = new Date()) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+/**
+ * Compute dates where ALL rooms in a category are booked.
+ * A date is only considered booked for a category if ZERO suites remain free on that date.
+ */
+export function getCategoryBookedDates(categoryRooms = [], requests = []) {
+  if (!Array.isArray(categoryRooms) || categoryRooms.length === 0) return [];
+  if (categoryRooms.length === 1) {
+    return RoomService.getBookedDatesForRoomSync(categoryRooms[0], requests);
+  }
+
+  const totalRooms = categoryRooms.length;
+  const dateOccupancyMap = new Map();
+
+  categoryRooms.forEach((room) => {
+    const booked = RoomService.getBookedDatesForRoomSync(room, requests);
+    booked.forEach((dateStr) => {
+      dateOccupancyMap.set(dateStr, (dateOccupancyMap.get(dateStr) || 0) + 1);
+    });
+  });
+
+  const fullyBooked = [];
+  for (const [dateStr, count] of dateOccupancyMap.entries()) {
+    if (count >= totalRooms) {
+      fullyBooked.push(dateStr);
+    }
+  }
+  return fullyBooked.sort();
+}
+
+/**
+ * Given a category's rooms and target checkIn / checkOut range,
+ * returns all suites that are 100% available for the full continuous duration of the stay.
+ */
+export function getAvailableRoomsForCategory(categoryRooms = [], checkIn, checkOut, requests = []) {
+  if (!Array.isArray(categoryRooms) || categoryRooms.length === 0) return [];
+  if (!checkIn || !checkOut) return categoryRooms;
+
+  const requestedNights = getBookedNightsInRange(checkIn, checkOut);
+  if (requestedNights.length === 0) return categoryRooms;
+
+  return categoryRooms.filter((room) => {
+    const bookedDates = RoomService.getBookedDatesForRoomSync(room, requests);
+    return !requestedNights.some((night) => bookedDates.includes(night));
+  });
+}
+
+/**
+ * Groups individual rooms into high-level Room Categories for the client booking portal.
+ * Calculates total suites, live available suites count, and fully-booked calendar dates.
+ */
+export function groupRoomsByCategory(rooms = [], requests = []) {
+  if (!Array.isArray(rooms) || rooms.length === 0) return [];
+
+  const map = new Map();
+
+  rooms.forEach((room) => {
+    // Group primarily by room name, falling back to tier
+    const key = (room.name || room.tier || 'Deluxe Room').trim();
+
+    if (!map.has(key)) {
+      map.set(key, {
+        id: 'cat-' + key.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+        name: room.name || key,
+        tier: room.tier || 'Deluxe Alpine',
+        floor: room.floor || 'Floor 1',
+        floors: [room.floor].filter(Boolean),
+        capacity: room.capacity || '2 Guests • 1 King Bed',
+        pricePKR: Number(room.pricePKR) || 45000,
+        minPrice: Number(room.pricePKR) || 45000,
+        maxPrice: Number(room.pricePKR) || 45000,
+        amenities: Array.isArray(room.amenities) ? [...room.amenities] : [],
+        rooms: []
+      });
+    }
+
+    const cat = map.get(key);
+    cat.rooms.push(room);
+
+    if (room.floor && !cat.floors.includes(room.floor)) {
+      cat.floors.push(room.floor);
+    }
+    const price = Number(room.pricePKR) || 45000;
+    if (price < cat.minPrice) cat.minPrice = price;
+    if (price > cat.maxPrice) cat.maxPrice = price;
+
+    if (Array.isArray(room.amenities)) {
+      room.amenities.forEach((a) => {
+        if (!cat.amenities.includes(a)) cat.amenities.push(a);
+      });
+    }
+  });
+
+  return Array.from(map.values()).map((cat) => {
+    const bookedDates = getCategoryBookedDates(cat.rooms, requests);
+    const totalRooms = cat.rooms.length;
+    const availableRoomsNow = cat.rooms.filter((r) => r.status === 'available').length;
+    const inCleaningCount = cat.rooms.filter((r) => r.status === 'in cleaning').length;
+
+    return {
+      ...cat,
+      totalRooms,
+      availableRoomsNow,
+      inCleaningCount,
+      bookedDates
+    };
+  });
+}
+
 // Seed dataset categorized by 4 floors and 1 top suite with calendar coordination
 // Seed dataset categorized by 4 floors and 1 top suite
 // Clean slate: all rooms 100% open with zero placeholder date locks
@@ -669,6 +777,29 @@ export const RoomService = {
     }
 
     return Array.from(bookedSet).sort();
+  },
+
+  /**
+   * Compute dates where ALL rooms in a category are booked.
+   * A date is only considered booked for a category if ZERO suites remain free.
+   */
+  getCategoryBookedDates(categoryRooms = [], requests = []) {
+    return getCategoryBookedDates(categoryRooms, requests);
+  },
+
+  /**
+   * Given a category's rooms and checkIn / checkOut range,
+   * returns all suites that are 100% available for the full duration of the stay.
+   */
+  getAvailableRoomsForCategory(categoryRooms = [], checkIn, checkOut, requests = []) {
+    return getAvailableRoomsForCategory(categoryRooms, checkIn, checkOut, requests);
+  },
+
+  /**
+   * Groups individual rooms into high-level Room Categories for the client booking portal.
+   */
+  groupRoomsByCategory(rooms = [], requests = []) {
+    return groupRoomsByCategory(rooms, requests);
   },
 
   async getBookedDatesForRoom(roomId) {
