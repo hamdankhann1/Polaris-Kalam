@@ -173,6 +173,123 @@ export default function BookingPage({
     );
   }, [selectedCategory, checkIn, checkOut, bookingRequests]);
 
+  // Group rooms into distinct floor or room options with exact prices & room numbers
+  const floorOrRoomOptions = useMemo(() => {
+    if (!selectedCategory || !Array.isArray(selectedCategory.rooms)) return [];
+
+    const floorMap = new Map();
+    selectedCategory.rooms.forEach((r) => {
+      const f = (r.floor || 'Standard Level').trim();
+      if (!floorMap.has(f)) floorMap.set(f, []);
+      floorMap.get(f).push(r);
+    });
+
+    return Array.from(floorMap.entries()).map(([floorName, floorRooms]) => {
+      const minP = Math.min(...floorRooms.map((r) => Number(r.pricePKR) || 45000));
+      const maxP = Math.max(...floorRooms.map((r) => Number(r.pricePKR) || 45000));
+      const roomNumbers = floorRooms.map((r) => `#${r.roomNumber}`).join(', ');
+
+      return {
+        id: floorName,
+        name: floorName,
+        roomNumbers,
+        pricePKR: minP,
+        maxPricePKR: maxP,
+        rooms: floorRooms
+      };
+    });
+  }, [selectedCategory]);
+
+  // Compute live allocated suite based on active dates & user preference
+  const currentAssignedRoom = useMemo(() => {
+    if (!selectedCategory || !Array.isArray(selectedCategory.rooms) || selectedCategory.rooms.length === 0) {
+      return null;
+    }
+
+    const categoryRooms = selectedCategory.rooms;
+
+    // Filter available rooms for target stay range
+    let candidates = categoryRooms;
+    if (checkIn && checkOut) {
+      const available = getAvailableRoomsForCategory(
+        categoryRooms,
+        checkIn,
+        checkOut,
+        bookingRequests
+      );
+      if (available.length > 0) {
+        candidates = available;
+      }
+    }
+
+    // 1. If guest selected a specific floor or room
+    if (selectedFloorPreference) {
+      const matchByRoom = candidates.find(
+        (r) => r.id === selectedFloorPreference || r.roomNumber === selectedFloorPreference
+      );
+      if (matchByRoom) return matchByRoom;
+
+      const matchByFloor = candidates.find(
+        (r) => (r.floor || '').trim().toLowerCase() === selectedFloorPreference.trim().toLowerCase()
+      );
+      if (matchByFloor) return matchByFloor;
+
+      // Fallback: search across all category rooms (for preview)
+      const anyMatch = categoryRooms.find(
+        (r) =>
+          r.id === selectedFloorPreference ||
+          r.roomNumber === selectedFloorPreference ||
+          (r.floor || '').trim().toLowerCase() === selectedFloorPreference.trim().toLowerCase()
+      );
+      if (anyMatch) return anyMatch;
+    }
+
+    // 2. "No Preference (Best Available)":
+    // Sort candidates by price ascending to automatically allocate the best value suite
+    const sorted = [...candidates].sort(
+      (a, b) => (Number(a.pricePKR) || 0) - (Number(b.pricePKR) || 0)
+    );
+
+    return sorted[0] || categoryRooms[0];
+  }, [selectedCategory, checkIn, checkOut, bookingRequests, selectedFloorPreference]);
+
+  // Active nightly rate dynamically reactive to chosen suite/preference
+  const currentNightlyPrice = useMemo(() => {
+    if (currentAssignedRoom && Number(currentAssignedRoom.pricePKR) > 0) {
+      return Number(currentAssignedRoom.pricePKR);
+    }
+    return selectedCategory?.minPrice || 45000;
+  }, [currentAssignedRoom, selectedCategory]);
+
+  // Number of nights for the selected stay
+  const nightsCount = useMemo(() => {
+    if (!checkIn || !checkOut) return 0;
+    const start = new Date(checkIn + "T00:00:00");
+    const end = new Date(checkOut + "T00:00:00");
+    const diffTime = end - start;
+    const days = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return days > 0 ? days : 0;
+  }, [checkIn, checkOut]);
+
+  // Booked dates reactive to chosen floor/suite (or whole category for Best Available)
+  const activeBookedDates = useMemo(() => {
+    if (!selectedCategory) return [];
+    if (!selectedFloorPreference) {
+      return selectedCategory.bookedDates || [];
+    }
+
+    const matchingRooms = selectedCategory.rooms.filter(
+      (r) =>
+        r.id === selectedFloorPreference ||
+        r.roomNumber === selectedFloorPreference ||
+        (r.floor || '').trim().toLowerCase() === selectedFloorPreference.trim().toLowerCase()
+    );
+
+    if (matchingRooms.length === 0) return selectedCategory.bookedDates || [];
+
+    return getCategoryBookedDates(matchingRooms, bookingRequests);
+  }, [selectedCategory, selectedFloorPreference, bookingRequests]);
+
   const handleOpenBooking = (category) => {
     setSelectedCategory(category);
     setSelectedFloorPreference("");
@@ -236,15 +353,21 @@ export default function BookingPage({
       return;
     }
 
-    // Allocate suite matching guest's preferred floor if available, else allocate first available
+    // Allocate suite: prioritize match for guest's choice if available, else best available
     let assignedRoom = null;
     if (selectedFloorPreference) {
       assignedRoom = available.find(
-        (r) => (r.floor || "").trim().toLowerCase() === selectedFloorPreference.trim().toLowerCase()
+        (r) =>
+          r.id === selectedFloorPreference ||
+          r.roomNumber === selectedFloorPreference ||
+          (r.floor || "").trim().toLowerCase() === selectedFloorPreference.trim().toLowerCase()
       );
     }
     if (!assignedRoom) {
-      assignedRoom = available[0];
+      const sorted = [...available].sort(
+        (a, b) => (Number(a.pricePKR) || 0) - (Number(b.pricePKR) || 0)
+      );
+      assignedRoom = sorted[0];
     }
 
     setIsSubmitting(true);
@@ -265,8 +388,8 @@ export default function BookingPage({
         checkOut,
         guests,
         notes: notes
-          ? `${notes} [Category: ${selectedCategory.name} • Floor: ${assignedRoom.floor}${selectedFloorPreference ? ` (Preferred: ${selectedFloorPreference})` : ''} • Suite #${assignedRoom.roomNumber}]`
-          : `Category: ${selectedCategory.name} • Floor: ${assignedRoom.floor}${selectedFloorPreference ? ` (Preferred: ${selectedFloorPreference})` : ''} • Suite #${assignedRoom.roomNumber}`,
+          ? `${notes} [Category: ${selectedCategory.name} • Suite #${assignedRoom.roomNumber} (${assignedRoom.floor})${selectedFloorPreference ? ` • Preferred: ${selectedFloorPreference}` : ''} • Rate: PKR ${assignedRoom.pricePKR.toLocaleString()}/night]`
+          : `Category: ${selectedCategory.name} • Suite #${assignedRoom.roomNumber} (${assignedRoom.floor})${selectedFloorPreference ? ` • Preferred: ${selectedFloorPreference}` : ''} • Rate: PKR ${assignedRoom.pricePKR.toLocaleString()}/night`,
       });
 
       setIsSuccess(true);
@@ -708,16 +831,39 @@ export default function BookingPage({
                   <h3 className="font-display text-2xl sm:text-3xl text-stone-900 font-medium pt-1">
                     {selectedCategory.name}
                   </h3>
-                  <div className="flex flex-wrap items-baseline gap-1.5 pt-1.5">
+                  <div className="flex flex-wrap items-baseline gap-2 pt-1.5">
                     <span className="text-xs sm:text-sm font-sans font-bold text-stone-700">PKR</span>
-                    <span className="text-xl sm:text-2xl font-sans font-bold text-[#8A661C] tracking-tight">
-                      {selectedCategory.minPrice.toLocaleString()}
+                    <span className="text-2xl sm:text-3xl font-sans font-bold text-[#8A661C] tracking-tight transition-all">
+                      {currentNightlyPrice.toLocaleString()}
                     </span>
                     <span className="text-xs sm:text-sm font-sans text-stone-500 font-normal">/ night</span>
+
+                    {/* Dynamic Price Difference Badge */}
+                    {selectedCategory.minPrice !== selectedCategory.maxPrice && (
+                      currentNightlyPrice > selectedCategory.minPrice ? (
+                        <span className="px-2 py-0.5 rounded-full text-[11px] font-mono font-bold bg-amber-100 text-amber-900 border border-amber-300 animate-fadeIn">
+                          +PKR {(currentNightlyPrice - selectedCategory.minPrice).toLocaleString()} higher level
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-full text-[11px] font-mono font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 animate-fadeIn">
+                          Best value rate
+                        </span>
+                      )
+                    )}
+
                     <span className="text-stone-300 mx-1">•</span>
                     <span className="text-xs sm:text-sm font-sans text-stone-600 font-normal">
-                      {selectedCategory.capacity}
+                      {currentAssignedRoom?.capacity || selectedCategory.capacity}
                     </span>
+
+                    {currentAssignedRoom?.floor && (
+                      <>
+                        <span className="text-stone-300 mx-1">•</span>
+                        <span className="text-xs font-mono text-stone-700 bg-stone-100 px-2 py-0.5 rounded border border-stone-200">
+                          {currentAssignedRoom.floor}
+                        </span>
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -833,75 +979,152 @@ export default function BookingPage({
                         setCheckIn(cIn);
                         setCheckOut(cOut);
                       }}
-                      bookedDates={selectedCategory.bookedDates}
-                      pricePKR={selectedCategory.minPrice}
-                      roomName={selectedCategory.name}
+                      bookedDates={activeBookedDates}
+                      pricePKR={currentNightlyPrice}
+                      roomName={currentAssignedRoom?.name || selectedCategory.name}
                     />
                   </div>
 
-                  {/* Preferred Floor / Level Selection (When Category Has Rooms Across Multiple Floors) */}
-                  {selectedCategory.floors && selectedCategory.floors.length > 1 && (
-                    <div className="pt-1 space-y-2">
+                  {/* Preferred Floor / Level Selection (When Category Has Multiple Rooms / Floors) */}
+                  {selectedCategory.rooms && selectedCategory.rooms.length > 1 && (
+                    <div className="pt-1 space-y-2.5">
                       <div className="flex items-center justify-between">
                         <label className="block text-xs sm:text-sm font-mono uppercase tracking-wider text-stone-800 font-bold flex items-center space-x-1.5">
                           <Building2 className="w-4 h-4 text-[#B48A28]" />
-                          <span>Preferred Floor / Level</span>
+                          <span>Select Floor / Room Preference</span>
                         </label>
-                        <span className="text-[11px] font-mono text-stone-500">
-                          {selectedCategory.floors.length} levels available
-                        </span>
+                        {selectedCategory.minPrice !== selectedCategory.maxPrice && (
+                          <span className="text-[11px] font-mono text-[#8A661C] font-semibold bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
+                            Rates vary by level
+                          </span>
+                        )}
                       </div>
                       <p className="text-xs text-stone-600 font-normal">
-                        Suites in this category are located on multiple floors. Select your preference (e.g. higher panoramic view or lower garden level):
+                        Choose your preferred room level or let our system allocate the best available suite:
                       </p>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                        {/* Option 1: Best Available / No Preference */}
                         <button
                           type="button"
                           onClick={() => setSelectedFloorPreference('')}
-                          className={`p-3 rounded-xl text-left border transition-all text-xs font-mono cursor-pointer ${
+                          className={`p-3.5 rounded-xl text-left border transition-all text-xs font-mono cursor-pointer flex flex-col justify-between ${
                             !selectedFloorPreference
-                              ? 'bg-stone-900 text-white border-stone-900 font-bold shadow-xs'
+                              ? 'bg-stone-900 text-white border-stone-900 font-bold shadow-xs ring-2 ring-stone-900/20'
                               : 'bg-stone-50 text-stone-700 border-stone-200 hover:border-amber-300'
                           }`}
                         >
-                          <div className="font-semibold flex items-center justify-between">
-                            <span>No Preference (Best Available)</span>
-                            {!selectedFloorPreference && <Check className="w-3.5 h-3.5 text-amber-400" />}
+                          <div>
+                            <div className="font-semibold flex items-center justify-between">
+                              <span className="text-sm">Best Available</span>
+                              {!selectedFloorPreference && (
+                                <span className="flex items-center space-x-1 text-amber-400 font-bold text-[11px]">
+                                  <Check className="w-3.5 h-3.5" />
+                                  <span>Selected</span>
+                                </span>
+                              )}
+                            </div>
+                            <div className={`text-[10.5px] mt-1 ${!selectedFloorPreference ? 'text-stone-300' : 'text-stone-500'}`}>
+                              Automated allocation • Best value suite
+                            </div>
                           </div>
-                          <div className={`text-[10.5px] mt-0.5 ${!selectedFloorPreference ? 'text-stone-300' : 'text-stone-500'}`}>
-                            Automated first-available allocation
+
+                          <div className={`mt-3 pt-2 border-t flex items-center justify-between ${
+                            !selectedFloorPreference ? 'border-stone-700' : 'border-stone-200'
+                          }`}>
+                            <span className="text-[10.5px] opacity-80">
+                              {!selectedFloorPreference && currentAssignedRoom
+                                ? `Allocates Suite #${currentAssignedRoom.roomNumber}`
+                                : 'Nightly Rate'}
+                            </span>
+                            <div className="flex items-baseline space-x-1">
+                              <span className="text-[10px] font-bold">PKR</span>
+                              <span className={`text-sm font-bold ${!selectedFloorPreference ? 'text-amber-400' : 'text-[#8A661C]'}`}>
+                                {(!selectedFloorPreference
+                                  ? currentNightlyPrice
+                                  : selectedCategory.minPrice
+                                ).toLocaleString()}
+                              </span>
+                              <span className="text-[10px] opacity-80">/ night</span>
+                            </div>
                           </div>
                         </button>
 
-                        {selectedCategory.floors.map((flr) => {
-                          const isSelected = selectedFloorPreference === flr;
-                          const availableOnThisFloor = availableRoomsForRange.filter(
-                            (r) => (r.floor || '').trim().toLowerCase() === flr.trim().toLowerCase()
+                        {/* Option 2..N: Specific Floors or Rooms */}
+                        {floorOrRoomOptions.map((opt) => {
+                          const isSelected = selectedFloorPreference === opt.name || selectedFloorPreference === opt.id;
+                          const availableCount = availableRoomsForRange.filter(
+                            (r) => (r.floor || '').trim().toLowerCase() === opt.name.trim().toLowerCase()
                           ).length;
-                          const totalOnThisFloor = selectedCategory.rooms.filter(
-                            (r) => (r.floor || '').trim().toLowerCase() === flr.trim().toLowerCase()
-                          ).length;
+                          const totalCount = opt.rooms.length;
+                          const isSoldOut = Boolean(checkIn && checkOut && availableCount === 0);
+                          const priceDiff = opt.pricePKR - selectedCategory.minPrice;
 
                           return (
                             <button
-                              key={flr}
+                              key={opt.id}
                               type="button"
-                              onClick={() => setSelectedFloorPreference(flr)}
-                              className={`p-3 rounded-xl text-left border transition-all text-xs font-mono cursor-pointer ${
+                              onClick={() => setSelectedFloorPreference(opt.name)}
+                              className={`p-3.5 rounded-xl text-left border transition-all text-xs font-mono cursor-pointer flex flex-col justify-between ${
                                 isSelected
-                                  ? 'bg-[#B48A28] text-white border-[#B48A28] font-bold shadow-xs'
+                                  ? 'bg-[#B48A28] text-white border-[#B48A28] font-bold shadow-xs ring-2 ring-[#B48A28]/30'
+                                  : isSoldOut
+                                  ? 'bg-stone-50 text-stone-400 border-stone-200 opacity-70'
                                   : 'bg-stone-50 text-stone-700 border-stone-200 hover:border-amber-300'
                               }`}
                             >
-                              <div className="font-semibold flex items-center justify-between">
-                                <span>{flr}</span>
-                                {isSelected && <Check className="w-3.5 h-3.5 text-white" />}
+                              <div>
+                                <div className="font-semibold flex items-center justify-between">
+                                  <span className="text-sm">{opt.name}</span>
+                                  {isSelected ? (
+                                    <span className="flex items-center space-x-1 text-white font-bold text-[11px]">
+                                      <Check className="w-3.5 h-3.5" />
+                                      <span>Selected</span>
+                                    </span>
+                                  ) : isSoldOut ? (
+                                    <span className="text-rose-600 font-bold text-[10px] uppercase">
+                                      Sold Out
+                                    </span>
+                                  ) : null}
+                                </div>
+                                <div className={`text-[10.5px] mt-1 ${isSelected ? 'text-amber-100' : 'text-stone-500'}`}>
+                                  {opt.roomNumbers ? `${opt.roomNumbers} • ` : ''}
+                                  {checkIn && checkOut
+                                    ? isSoldOut
+                                      ? 'Occupied for selected stay'
+                                      : `${availableCount} of ${totalCount} available`
+                                    : `${totalCount} ${totalCount === 1 ? 'suite' : 'suites'} on this level`}
+                                </div>
                               </div>
-                              <div className={`text-[10.5px] mt-0.5 ${isSelected ? 'text-amber-100' : 'text-stone-500'}`}>
-                                {checkIn && checkOut
-                                  ? `${availableOnThisFloor} of ${totalOnThisFloor} suites available`
-                                  : `${totalOnThisFloor} suites on this level`}
+
+                              <div className={`mt-3 pt-2 border-t flex items-center justify-between ${
+                                isSelected ? 'border-amber-400/40' : 'border-stone-200'
+                              }`}>
+                                <div>
+                                  {priceDiff > 0 ? (
+                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                      isSelected ? 'bg-amber-900/40 text-amber-100' : 'bg-amber-100 text-amber-900'
+                                    }`}>
+                                      +PKR {priceDiff.toLocaleString()}
+                                    </span>
+                                  ) : priceDiff === 0 && selectedCategory.minPrice !== selectedCategory.maxPrice ? (
+                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                      isSelected ? 'bg-emerald-900/40 text-emerald-100' : 'bg-emerald-100 text-emerald-800'
+                                    }`}>
+                                      Best Value
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] opacity-75">Nightly Rate</span>
+                                  )}
+                                </div>
+
+                                <div className="flex items-baseline space-x-1">
+                                  <span className="text-[10px] font-bold">PKR</span>
+                                  <span className={`text-sm font-bold ${isSelected ? 'text-white' : 'text-[#8A661C]'}`}>
+                                    {opt.pricePKR.toLocaleString()}
+                                  </span>
+                                  <span className="text-[10px] opacity-80">/ night</span>
+                                </div>
                               </div>
                             </button>
                           );
@@ -937,6 +1160,38 @@ export default function BookingPage({
                       className="w-full bg-stone-50 border border-stone-300 rounded-xl p-3.5 text-sm sm:text-base text-stone-900 placeholder-stone-500 focus:outline-none focus:border-amber-600 focus:bg-white focus:ring-1 focus:ring-amber-500 transition-colors resize-none"
                     />
                   </div>
+
+                  {/* Live Allocation & Pricing Summary */}
+                  {currentAssignedRoom && (
+                    <div className="p-3.5 sm:p-4 rounded-xl bg-stone-100 border border-stone-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs font-mono">
+                      <div className="space-y-0.5">
+                        <span className="text-stone-500 text-[10.5px] uppercase tracking-wider block font-semibold">
+                          ALLOCATED SUITE & LEVEL:
+                        </span>
+                        <span className="font-bold text-stone-900 text-xs sm:text-sm">
+                          Suite #{currentAssignedRoom.roomNumber} ({currentAssignedRoom.floor})
+                        </span>
+                      </div>
+                      <div className="sm:text-right space-y-0.5 pt-1 sm:pt-0 border-t sm:border-t-0 border-stone-200">
+                        <span className="text-stone-500 text-[10.5px] uppercase tracking-wider block font-semibold">
+                          {checkIn && checkOut && nightsCount > 0
+                            ? `TOTAL ESTIMATE (${nightsCount} ${nightsCount === 1 ? 'NIGHT' : 'NIGHTS'}):`
+                            : 'NIGHTLY RATE:'}
+                        </span>
+                        <div className="flex items-baseline sm:justify-end space-x-1">
+                          <span className="text-[10.5px] font-bold text-stone-500">PKR</span>
+                          <span className="text-base sm:text-lg font-bold text-[#8A661C]">
+                            {checkIn && checkOut && nightsCount > 0
+                              ? (currentNightlyPrice * nightsCount).toLocaleString()
+                              : currentNightlyPrice.toLocaleString()}
+                          </span>
+                          {(!checkIn || !checkOut || nightsCount === 0) && (
+                            <span className="text-[10px] text-stone-500">/ night</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Submit Button */}
                   <div className="pt-2">
