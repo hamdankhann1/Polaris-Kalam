@@ -27,7 +27,8 @@ import {
   Check,
   Phone,
   Mail,
-  Send
+  Send,
+  RefreshCw
 } from 'lucide-react';
 import { RoomService, FLOOR_CATEGORIES } from '../../services/roomService';
 import { BookingRequestService } from '../../services/bookingRequestService';
@@ -93,6 +94,25 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
 
   // Toast Notification
   const [toastMessage, setToastMessage] = useState('');
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  // Manual fast database sync handler
+  const handleManualSync = async () => {
+    setIsSyncing(true);
+    try {
+      const [freshRooms, freshRequests] = await Promise.all([
+        RoomService.getRooms(true),
+        BookingRequestService.getRequests(true)
+      ]);
+      setRooms(freshRooms);
+      setBookingRequests(freshRequests);
+      triggerToast('Database synchronized in real-time.');
+    } catch (err) {
+      triggerToast('Sync warning: ' + err.message);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   // Load rooms and booking requests with multi-source reactive sync
   useEffect(() => {
@@ -790,6 +810,22 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
 
           {/* Right Action Buttons */}
           <div className="flex items-center space-x-2.5">
+            {/* Real-Time Database Sync Button */}
+            <button
+              onClick={handleManualSync}
+              disabled={isSyncing}
+              className="px-3 py-1.5 rounded-lg border border-emerald-300/80 bg-emerald-50/90 hover:bg-emerald-100 text-xs font-mono uppercase tracking-wider text-emerald-800 transition-all flex items-center space-x-1.5 font-bold shadow-2xs"
+              title="Real-Time Database Sync (Click to immediately fetch latest inventory & bookings)"
+            >
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              <RefreshCw className={`w-3 h-3 text-emerald-700 ${isSyncing ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">{isSyncing ? 'Syncing...' : 'Database Live'}</span>
+              <span className="sm:hidden">{isSyncing ? '...' : 'Sync'}</span>
+            </button>
+
             {onOpenBooking && (
               <button
                 onClick={onOpenBooking}

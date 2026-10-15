@@ -12,6 +12,7 @@ let cachedClient = null;
 let cachedDb = null;
 
 // Initial seed dataset (Categorized across 4 floors + 1 top suite)
+// Clean slate: all suites 100% available with zero demo date locks
 const INITIAL_ROOMS = [
   {
     id: 'room-top-suite-501',
@@ -30,15 +31,7 @@ const INITIAL_ROOMS = [
       'Private Butler & Concierge Entry'
     ],
     activeBooking: null,
-    bookedRanges: [
-      {
-        id: 'b-501-1',
-        checkIn: '2026-12-08',
-        checkOut: '2026-12-12',
-        guestName: 'Ambassador Al-Mansoor',
-        source: 'VIP Diplomatic Allocation'
-      }
-    ],
+    bookedRanges: [],
     cleaningInfo: null,
     lastCleanedAt: new Date(Date.now() - 3600000 * 3).toISOString(),
     updatedAt: new Date().toISOString()
@@ -59,15 +52,7 @@ const INITIAL_ROOMS = [
       'Artisan Espresso Bar'
     ],
     activeBooking: null,
-    bookedRanges: [
-      {
-        id: 'b-401-1',
-        checkIn: '2026-12-04',
-        checkOut: '2026-12-07',
-        guestName: 'Farhan Qureshi',
-        source: 'Website Reservation'
-      }
-    ],
+    bookedRanges: [],
     cleaningInfo: null,
     lastCleanedAt: new Date(Date.now() - 3600000 * 5).toISOString(),
     updatedAt: new Date().toISOString()
@@ -80,7 +65,7 @@ const INITIAL_ROOMS = [
     floor: 'Floor 4',
     capacity: '2 Guests • 1 King Bed',
     pricePKR: 58000,
-    status: 'in cleaning',
+    status: 'available',
     amenities: [
       'Ceiling Glass Skylight',
       'Rainfall Mountain Shower',
@@ -88,12 +73,7 @@ const INITIAL_ROOMS = [
     ],
     activeBooking: null,
     bookedRanges: [],
-    cleaningInfo: {
-      assignedTo: 'Turnover Team Alpha (Hamza)',
-      priority: 'Urgent — Check-in today at 4:30 PM',
-      notes: 'Deep sanitization and cedar fragrance renewal in progress.',
-      startedAt: new Date(Date.now() - 3600000 * 1.2).toISOString()
-    },
+    cleaningInfo: null,
     lastCleanedAt: new Date(Date.now() - 86400000).toISOString(),
     updatedAt: new Date().toISOString()
   },
@@ -111,31 +91,8 @@ const INITIAL_ROOMS = [
       'Stone Hearth Fireplace',
       'Alpine Library Lounge'
     ],
-    activeBooking: {
-      guestName: 'Syed Bilal Ahmad',
-      checkIn: '2026-12-01',
-      checkOut: '2026-12-04',
-      source: 'Other Hotel CMS (Sync)',
-      notes: 'Inaugural soft-launch guest arrival. Welcome mountain tea requested.',
-      bookingRef: 'PK-9821',
-      bookedAt: new Date(Date.now() - 3600000 * 2).toISOString()
-    },
-    bookedRanges: [
-      {
-        id: 'b-301-1',
-        checkIn: '2026-12-01',
-        checkOut: '2026-12-04',
-        guestName: 'Syed Bilal Ahmad',
-        source: 'Other Hotel CMS (Sync)'
-      },
-      {
-        id: 'b-301-2',
-        checkIn: '2026-12-15',
-        checkOut: '2026-12-18',
-        guestName: 'Zubair Shah',
-        source: 'VIP Reservation'
-      }
-    ],
+    activeBooking: null,
+    bookedRanges: [],
     cleaningInfo: null,
     lastCleanedAt: new Date(Date.now() - 86400000 * 2).toISOString(),
     updatedAt: new Date().toISOString()
@@ -175,15 +132,7 @@ const INITIAL_ROOMS = [
       'Deep Soaking Mountain Bathtub'
     ],
     activeBooking: null,
-    bookedRanges: [
-      {
-        id: 'b-201-1',
-        checkIn: '2026-12-20',
-        checkOut: '2026-12-24',
-        guestName: 'Hassan Mir',
-        source: 'Direct WhatsApp'
-      }
-    ],
+    bookedRanges: [],
     cleaningInfo: null,
     lastCleanedAt: new Date(Date.now() - 3600000 * 4).toISOString(),
     updatedAt: new Date().toISOString()
@@ -202,24 +151,8 @@ const INITIAL_ROOMS = [
       'Twin Vanities',
       'Smart Climate Control'
     ],
-    activeBooking: {
-      guestName: 'Dr. Ayesha Malik & Family',
-      checkIn: '2026-12-10',
-      checkOut: '2026-12-14',
-      source: 'Direct Phone / WhatsApp',
-      notes: 'Soft launch family stay. Early check-in approved (1:00 PM). Extra blankets.',
-      bookingRef: 'PK-4412',
-      bookedAt: new Date(Date.now() - 3600000 * 4).toISOString()
-    },
-    bookedRanges: [
-      {
-        id: 'b-202-1',
-        checkIn: '2026-12-10',
-        checkOut: '2026-12-14',
-        guestName: 'Dr. Ayesha Malik & Family',
-        source: 'Direct Phone / WhatsApp'
-      }
-    ],
+    activeBooking: null,
+    bookedRanges: [],
     cleaningInfo: null,
     lastCleanedAt: new Date(Date.now() - 86400000).toISOString(),
     updatedAt: new Date().toISOString()
@@ -232,28 +165,15 @@ const INITIAL_ROOMS = [
     floor: 'Floor 1',
     capacity: '2 Guests • 1 King Bed',
     pricePKR: 42000,
-    status: 'in cleaning',
+    status: 'available',
     amenities: [
       'Pine Forest Garden View',
       'Stone Hearth Fireplace',
       'Custom Mountain Cedar Bath'
     ],
     activeBooking: null,
-    bookedRanges: [
-      {
-        id: 'b-101-1',
-        checkIn: '2026-10-22',
-        checkOut: '2026-10-25',
-        guestName: 'Naveed Akhtar',
-        source: 'OTA Agoda'
-      }
-    ],
-    cleaningInfo: {
-      assignedTo: 'Turnover Team Beta (Tariq)',
-      priority: 'Standard Departure Cleaning',
-      notes: 'Linen turnover and pine logs restocked.',
-      startedAt: new Date(Date.now() - 3600000 * 0.9).toISOString()
-    },
+    bookedRanges: [],
+    cleaningInfo: null,
     lastCleanedAt: new Date(Date.now() - 86400000).toISOString(),
     updatedAt: new Date().toISOString()
   },
@@ -279,7 +199,7 @@ const INITIAL_ROOMS = [
   }
 ];
 
-let fallbackRooms = [...INITIAL_ROOMS];
+let fallbackRooms = INITIAL_ROOMS.map((r) => ({ ...r, activeBooking: null, bookedRanges: [] }));
 
 async function getDatabase() {
   const uri = process.env.MONGODB_URI;
@@ -307,10 +227,14 @@ async function getDatabase() {
 }
 
 export default async function handler(req, res) {
-  // CORS Headers
+  // CORS & Strict Real-Time No-Cache Headers (Prevents mobile devices from caching stale database responses)
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Surrogate-Control', 'no-store');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -325,6 +249,60 @@ export default async function handler(req, res) {
     // -----------------------------------------------------------------------
     if (req.method === 'GET') {
       if (collection) {
+        // Permanently purge any legacy demo booked ranges and demo active bookings from MongoDB
+        try {
+          const DEMO_RANGE_IDS = ['b-501-1', 'b-401-1', 'b-301-1', 'b-301-2', 'b-201-1', 'b-202-1', 'b-101-1'];
+          const DEMO_GUEST_NAMES = [
+            'Ambassador Al-Mansoor',
+            'Farhan Qureshi',
+            'Syed Bilal Ahmad',
+            'Zubair Shah',
+            'Hassan Mir',
+            'Dr. Ayesha Malik & Family',
+            'Naveed Akhtar'
+          ];
+
+          await collection.updateMany(
+            {},
+            {
+              $pull: {
+                bookedRanges: {
+                  $or: [
+                    { id: { $in: DEMO_RANGE_IDS } },
+                    { guestName: { $in: DEMO_GUEST_NAMES } }
+                  ]
+                }
+              }
+            }
+          );
+          await collection.updateMany(
+            {
+              $or: [
+                { 'activeBooking.guestName': { $in: DEMO_GUEST_NAMES } },
+                { 'activeBooking.bookingRef': { $in: ['PK-9821', 'PK-4412'] } }
+              ]
+            },
+            { $set: { activeBooking: null } }
+          );
+
+          // Automatically declutter expired past booked ranges older than 3 months (90 days)
+          const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+          const ninetyDaysAgoYMD = ninetyDaysAgo.split('T')[0];
+
+          await collection.updateMany(
+            {},
+            {
+              $pull: {
+                bookedRanges: {
+                  checkOut: { $lt: ninetyDaysAgoYMD }
+                }
+              }
+            }
+          );
+        } catch (purgeErr) {
+          console.warn('MongoDB room purge warning in /api/rooms:', purgeErr.message);
+        }
+
         let rooms = await collection.find({}).toArray();
         if (rooms.length === 0) {
           await collection.insertMany(INITIAL_ROOMS);
@@ -334,6 +312,13 @@ export default async function handler(req, res) {
         return res.status(200).json({ success: true, data: sanitized, source: 'mongodb' });
       }
 
+      const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+      const ninetyDaysAgoYMD = ninetyDaysAgo.split('T')[0];
+      fallbackRooms.forEach((r) => {
+        if (Array.isArray(r.bookedRanges)) {
+          r.bookedRanges = r.bookedRanges.filter((b) => !b.checkOut || b.checkOut >= ninetyDaysAgoYMD);
+        }
+      });
       return res.status(200).json({ success: true, data: fallbackRooms, source: 'memory' });
     }
 
@@ -369,10 +354,24 @@ export default async function handler(req, res) {
     }
 
     // -----------------------------------------------------------------------
-    // POST: Add new room
+    // POST: Add new room OR Reset inventory
     // -----------------------------------------------------------------------
     if (req.method === 'POST') {
       const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+      
+      // Reset database inventory to default initial suites
+      if (body?.action === 'reset' || req.query?.action === 'reset') {
+        if (collection) {
+          await collection.deleteMany({});
+          await collection.insertMany(INITIAL_ROOMS);
+          const fresh = await collection.find({}).toArray();
+          const sanitized = fresh.map(({ _id, ...rest }) => rest);
+          return res.status(200).json({ success: true, data: sanitized, source: 'mongodb' });
+        }
+        fallbackRooms = INITIAL_ROOMS.map((r) => ({ ...r, activeBooking: null, bookedRanges: [] }));
+        return res.status(200).json({ success: true, data: fallbackRooms, source: 'memory' });
+      }
+
       if (!body) return res.status(400).json({ success: false, error: 'Room data required' });
 
       const newRoom = {

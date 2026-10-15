@@ -17,47 +17,58 @@
 
 const STORAGE_KEY = 'polaris_booking_requests_v2';
 
-// Pre-seeded sample booking requests for immediate demonstration (Soft Launch Dec 2026)
-const INITIAL_REQUESTS = [
-  {
-    id: 'req-101',
-    guestName: 'Malik Zeeshan & Family',
-    phone: '+92 300 8554210',
-    email: 'zeeshan.malik@outlook.com',
-    roomId: 'room-top-suite-501',
-    roomNumber: '501',
-    roomName: 'The Celestial Summit Penthouse',
-    tier: 'Top Suite / Presidential',
-    floor: 'Top Suite',
-    pricePKR: 120000,
-    checkIn: '2026-12-05',
-    checkOut: '2026-12-08',
-    nights: 3,
-    guests: '3 Adults, 1 Child',
-    notes: 'Inaugural soft launch family vacation. Requesting private Swat airport transfer and late arrival dinner.',
-    status: 'pending', // 'pending' | 'approved' | 'contacted' | 'declined'
-    createdAt: new Date(Date.now() - 3600000 * 2).toISOString()
-  },
-  {
-    id: 'req-102',
-    guestName: 'Fatima Zahra Khan',
-    phone: '+92 321 4455889',
-    email: 'fatima.zkhan@gmail.com',
-    roomId: 'room-401',
-    roomNumber: '401',
-    roomName: 'Starlight Glacier Horizon Suite',
-    tier: 'Executive Panoramic Suite',
-    floor: 'Floor 4',
-    pricePKR: 75000,
-    checkIn: '2026-12-12',
-    checkOut: '2026-12-14',
-    nights: 2,
-    guests: '2 Adults',
-    notes: 'Soft launch anniversary celebration trip. Please prepare fireplace cedar logs and mountain tea.',
-    status: 'pending',
-    createdAt: new Date(Date.now() - 3600000 * 8).toISOString()
-  }
-];
+// Zero placeholder bookings - production database starts completely clean
+const INITIAL_REQUESTS = [];
+
+const DEMO_REQUEST_IDS = new Set(['req-101', 'req-102']);
+const DEMO_GUEST_NAMES = new Set([
+  'Malik Zeeshan & Family',
+  'Fatima Zahra Khan',
+  'Ambassador Al-Mansoor',
+  'Farhan Qureshi',
+  'Syed Bilal Ahmad',
+  'Zubair Shah',
+  'Hassan Mir',
+  'Dr. Ayesha Malik & Family',
+  'Naveed Akhtar'
+]);
+
+function isDemoBooking(r) {
+  if (!r) return false;
+  if (r.id && (DEMO_REQUEST_IDS.has(r.id) || String(r.id).startsWith('req-demo-'))) return true;
+  if (r.guestName && DEMO_GUEST_NAMES.has(r.guestName)) return true;
+  return false;
+}
+
+// Check if request is older than 3 months (90 days)
+export function isExpiredRequest(r) {
+  if (!r) return true;
+  if (isDemoBooking(r)) return true;
+  const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+  const ninetyDaysAgoYMD = ninetyDaysAgo.split('T')[0];
+  if (r.createdAt && r.createdAt < ninetyDaysAgo) return true;
+  if (r.checkOut && r.checkOut < ninetyDaysAgoYMD) return true;
+  return false;
+}
+
+// Immediate purge on startup if in browser
+if (typeof window !== 'undefined') {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        const cleaned = parsed.filter((r) => !isExpiredRequest(r));
+        if (cleaned.length !== parsed.length) {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(cleaned));
+        }
+      }
+    }
+    // Also remove legacy keys
+    localStorage.removeItem('polaris_booking_requests');
+    localStorage.removeItem('polaris_booking_requests_v1');
+  } catch (e) {}
+}
 
 const listeners = new Set();
 let isSyncing = false;
@@ -87,13 +98,16 @@ if (typeof window !== 'undefined') {
     if (event.key === STORAGE_KEY) {
       try {
         const updated = event.newValue ? JSON.parse(event.newValue) : [];
-        notifyListeners(updated);
+        const cleaned = Array.isArray(updated) ? updated.filter((r) => !isDemoBooking(r)) : [];
+        notifyListeners(cleaned);
       } catch (e) {
         console.error('Error handling storage event for booking requests:', e);
       }
     }
   });
 }
+
+let cachedRequests = [];
 
 export const BookingRequestService = {
   subscribe(callback) {
@@ -102,93 +116,78 @@ export const BookingRequestService = {
   },
 
   /**
-   * Fetch all requests.
-   * Returns local cached requests immediately, then syncs with cloud in background.
+   * Fetch all booking requests directly from database API (/api/bookings).
+   * Ensures mobile phones, laptops, and staff desks see the exact same reservations.
    */
-  async getRequests() {
-    let localData = null;
+  async getRequests(force = false) {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          localData = parsed;
+      const res = await fetch(`/api/bookings?t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: {
+          'Accept': 'application/json',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache'
         }
-      }
-    } catch (e) {
-      console.warn('Could not read booking requests from localStorage', e);
-    }
-
-    if (!localData) {
-      localData = [...INITIAL_REQUESTS];
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(localData));
-      } catch (e) {}
-    }
-
-    // Trigger background cloud sync if in browser
-    if (typeof window !== 'undefined') {
-      setTimeout(() => {
-        this.syncWithCloud().catch(() => {});
-      }, 50);
-    }
-
-    return [...localData];
-  },
-
-  /**
-   * Synchronize with cloud API (/api/bookings)
-   */
-  async syncWithCloud() {
-    if (isSyncing || typeof window === 'undefined') return;
-    isSyncing = true;
-
-    try {
-      const res = await fetch('/api/bookings', {
-        headers: { 'Accept': 'application/json' },
-        cache: 'no-store'
       });
 
       if (res.ok) {
         const json = await res.json();
-        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
-          const cloudRequests = json.data;
-          const currentStored = localStorage.getItem(STORAGE_KEY);
-          const currentParsed = currentStored ? JSON.parse(currentStored) : [];
-
-          // Merge: use cloud list as authoritative, but preserve any local items not yet in cloud
-          const cloudIds = new Set(cloudRequests.map((r) => r.id));
-          const localOnly = currentParsed.filter((r) => !cloudIds.has(r.id));
-          const merged = [...cloudRequests, ...localOnly];
-
-          const hasChanged = JSON.stringify(merged) !== currentStored;
-          if (hasChanged) {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
-            notifyListeners(merged);
-          }
+        if (json.success && Array.isArray(json.data)) {
+          const cloudRequests = json.data.filter((r) => !isExpiredRequest(r));
+          cachedRequests = cloudRequests;
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(cloudRequests));
+          } catch (e) {}
+          notifyListeners(cloudRequests);
+          return [...cloudRequests];
         }
       }
     } catch (err) {
-      // Cloud sync offline or local dev without serverless - silent fallback to local
-    } finally {
-      isSyncing = false;
+      console.warn('[BookingRequestService] Database API unreachable, falling back to cache:', err);
     }
+
+    // Fallback only if offline / network error
+    if (cachedRequests.length > 0) return [...cachedRequests];
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          cachedRequests = parsed.filter((r) => !isExpiredRequest(r));
+          return [...cachedRequests];
+        }
+      }
+    } catch (e) {}
+
+    return [];
+  },
+
+  async syncWithCloud() {
+    return this.getRequests(true);
   },
 
   async resetToDefaults() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_REQUESTS));
-    notifyListeners(INITIAL_REQUESTS);
-    return [...INITIAL_REQUESTS];
+    const res = await fetch('/api/bookings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'reset' })
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to reset bookings in database.');
+    }
+
+    cachedRequests = [];
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify([])); } catch (e) {}
+    notifyListeners([]);
+    return [];
   },
 
   /**
-   * Create a new booking request.
-   * Optimistically updates UI & localStorage, then pushes to cloud API.
+   * Create a new booking request -> persists to database
    */
   async createRequest(data) {
-    const requests = await this.getRequests();
-
-    // Compute nights
     const start = new Date(data.checkIn || Date.now());
     const end = new Date(data.checkOut || Date.now() + 86400000);
     const diffTime = Math.abs(end - start);
@@ -210,90 +209,67 @@ export const BookingRequestService = {
       nights: diffDays,
       guests: data.guests || '2 Guests',
       notes: data.notes ? data.notes.trim() : (data.source ? `Source: ${data.source}` : ''),
-      status: data.status || 'pending', // 'pending' increments the red notification badge!
+      status: data.status || 'pending',
       createdAt: new Date().toISOString()
     };
 
-    requests.unshift(newRequest);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(requests));
-    notifyListeners(requests);
+    const res = await fetch('/api/bookings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newRequest)
+    });
 
-    // Push to cloud backend
-    try {
-      fetch('/api/bookings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newRequest)
-      }).catch((e) => console.warn('Cloud API sync deferred:', e.message));
-    } catch (e) {}
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to save booking to database.');
+    }
 
+    await this.getRequests(true);
     return newRequest;
   },
 
   /**
-   * Update status of a request ('pending', 'approved', 'contacted', 'declined')
+   * Update status of a request -> persists to database
    */
   async updateStatus(requestId, newStatus, note = '') {
-    const requests = await this.getRequests();
-    const index = requests.findIndex((r) => r.id === requestId);
-    if (index === -1) {
-      throw new Error(`Booking request with ID "${requestId}" not found.`);
+    const res = await fetch('/api/bookings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: requestId,
+        status: newStatus,
+        staffNote: note
+      })
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to update booking status in database.');
     }
 
-    requests[index].status = newStatus;
-    if (note) {
-      requests[index].staffNote = note;
-    }
-    requests[index].updatedAt = new Date().toISOString();
-
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(requests));
-    notifyListeners(requests);
-
-    // Sync to cloud
-    try {
-      fetch('/api/bookings', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: requestId,
-          status: newStatus,
-          staffNote: note
-        })
-      }).catch(() => {});
-    } catch (e) {}
-
-    return requests[index];
+    const fresh = await this.getRequests(true);
+    return fresh.find((r) => r.id === requestId);
   },
 
   /**
-   * Delete a booking request
+   * Delete a booking request -> persists to database
    */
   async deleteRequest(requestId) {
-    const requests = await this.getRequests();
-    const index = requests.findIndex((r) => r.id === requestId);
-    if (index === -1) {
-      throw new Error(`Booking request with ID "${requestId}" not found.`);
+    const res = await fetch('/api/bookings', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: requestId })
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to delete booking request from database.');
     }
 
-    const deleted = requests.splice(index, 1)[0];
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(requests));
-    notifyListeners(requests);
-
-    // Sync to cloud
-    try {
-      fetch('/api/bookings', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: requestId })
-      }).catch(() => {});
-    } catch (e) {}
-
-    return deleted;
+    await this.getRequests(true);
+    return { id: requestId };
   },
 
-  /**
-   * Helper: Generate a pre-filled WhatsApp link with a luxury concierge greeting
-   */
   generateWhatsAppLink(request) {
     let cleanPhone = (request.phone || '').replace(/[^0-9]/g, '');
     if (cleanPhone.startsWith('03')) {
@@ -319,15 +295,20 @@ Concierge Team • Polaris Kalam Valley`;
   }
 };
 
-// Automatic background sync every 20 seconds while tab is active
+// Automatic real-time background sync every 3 seconds while active
 if (typeof window !== 'undefined') {
   setInterval(() => {
     if (document.visibilityState === 'visible') {
-      BookingRequestService.syncWithCloud().catch(() => {});
+      BookingRequestService.getRequests().catch(() => {});
     }
-  }, 20000);
+  }, 3000);
 
   window.addEventListener('focus', () => {
-    BookingRequestService.syncWithCloud().catch(() => {});
+    BookingRequestService.getRequests().catch(() => {});
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      BookingRequestService.getRequests().catch(() => {});
+    }
   });
 }

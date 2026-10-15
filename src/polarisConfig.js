@@ -36,13 +36,16 @@ export const POLARIS_CONFIG = {
   coordinates: "35°29'12.4N 72°3504.0E",
   elevation: "2,000 Meters",
 
-  // --- BACKGROUND IMAGE SETTING ---
-  // Leave empty `""` to display the sleek image-free architectural dark canvas.
-  // When you have a photo ready, change this to your image path (e.g. "/hero-bg.jpg") or URL.
+  // --- HERO SECTION BACKGROUND IMAGE ---
+  // Background photo specifically rendered for the top Hero section
+  heroBackgroundImage: "/polaris-hero-bg.jpg",
+  heroBackgroundOverlayOpacity: 0.68,
+
+  // --- GLOBAL BACKGROUND IMAGE SETTING (FULL SITE) ---
+  // Leave empty `""` to display the luminous light theme procedural canvas across other sections.
   backgroundImage: "",
 
-  // Dark overlay opacity over the background image (from 0.1 to 0.95).
-  // 0.82 ensures text always stays ultra-readable and keeps the high-end luxury dark vibe.
+  // Dark overlay opacity over the global background image (from 0.1 to 0.95).
   backgroundOverlayOpacity: 0.82,
 
   // --- VIP WAITLIST & AUTOMATED EMAIL SERVICE (HERO SECTION) ---

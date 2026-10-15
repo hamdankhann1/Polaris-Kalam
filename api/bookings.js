@@ -14,50 +14,24 @@
 let cachedClient = null;
 let cachedDb = null;
 
-// Initial seed requests
-const INITIAL_REQUESTS = [
-  {
-    id: 'req-101',
-    guestName: 'Malik Zeeshan & Family',
-    phone: '+92 300 8554210',
-    email: 'zeeshan.malik@outlook.com',
-    roomId: 'room-top-suite-501',
-    roomNumber: '501',
-    roomName: 'The Celestial Summit Penthouse',
-    tier: 'Top Suite / Presidential',
-    floor: 'Top Suite',
-    pricePKR: 120000,
-    checkIn: '2026-12-05',
-    checkOut: '2026-12-08',
-    nights: 3,
-    guests: '3 Adults, 1 Child',
-    notes: 'Inaugural soft launch family vacation. Requesting private Swat airport transfer and late arrival dinner.',
-    status: 'pending',
-    createdAt: new Date(Date.now() - 3600000 * 2).toISOString()
-  },
-  {
-    id: 'req-102',
-    guestName: 'Fatima Zahra Khan',
-    phone: '+92 321 4455889',
-    email: 'fatima.zkhan@gmail.com',
-    roomId: 'room-401',
-    roomNumber: '401',
-    roomName: 'Starlight Glacier Horizon Suite',
-    tier: 'Executive Panoramic Suite',
-    floor: 'Floor 4',
-    pricePKR: 75000,
-    checkIn: '2026-12-12',
-    checkOut: '2026-12-14',
-    nights: 2,
-    guests: '2 Adults',
-    notes: 'Soft launch anniversary celebration trip. Please prepare fireplace cedar logs and mountain tea.',
-    status: 'pending',
-    createdAt: new Date(Date.now() - 3600000 * 8).toISOString()
-  }
+// Initial seed requests (Empty - production database starts clean)
+const INITIAL_REQUESTS = [];
+
+const DEMO_REQUEST_IDS = ['req-101', 'req-102'];
+const DEMO_GUEST_NAMES = [
+  'Malik Zeeshan & Family',
+  'Fatima Zahra Khan',
+  'Ambassador Al-Mansoor',
+  'Farhan Qureshi',
+  'Syed Bilal Ahmad',
+  'Zubair Shah',
+  'Hassan Mir',
+  'Dr. Ayesha Malik & Family',
+  'Naveed Akhtar'
 ];
 
 // Fallback in-memory storage for serverless runtime
-let fallbackBookings = [...INITIAL_REQUESTS];
+let fallbackBookings = [];
 
 async function getDatabase() {
   const uri = process.env.MONGODB_URI;
@@ -85,10 +59,14 @@ async function getDatabase() {
 }
 
 export default async function handler(req, res) {
-  // CORS Headers
+  // CORS & Strict Real-Time No-Cache Headers (Prevents mobile devices from caching stale database responses)
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Surrogate-Control', 'no-store');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -103,25 +81,56 @@ export default async function handler(req, res) {
     // -----------------------------------------------------------------------
     if (req.method === 'GET') {
       if (collection) {
-        let bookings = await collection.find({}).sort({ createdAt: -1 }).toArray();
-        if (bookings.length === 0) {
-          // Seed database
-          await collection.insertMany(INITIAL_REQUESTS);
-          bookings = await collection.find({}).sort({ createdAt: -1 }).toArray();
+        // Auto-purge records older than 3 months (90 days) & legacy demo requests
+        const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+        const ninetyDaysAgoYMD = ninetyDaysAgo.split('T')[0];
+
+        try {
+          await collection.deleteMany({
+            $or: [
+              { id: { $in: DEMO_REQUEST_IDS } },
+              { guestName: { $in: DEMO_GUEST_NAMES } },
+              { createdAt: { $lt: ninetyDaysAgo } },
+              { checkOut: { $lt: ninetyDaysAgoYMD } }
+            ]
+          });
+        } catch (e) {
+          console.warn('MongoDB 3-month purge warning in /api/bookings:', e.message);
         }
-        // Sanitize MongoDB _id
+
+        const bookings = await collection.find({}).sort({ createdAt: -1 }).toArray();
+        // Sanitize MongoDB _id - NEVER re-seed demo requests
         const sanitized = bookings.map(({ _id, ...rest }) => rest);
         return res.status(200).json({ success: true, data: sanitized, source: 'mongodb' });
       }
 
+      const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+      const ninetyDaysAgoYMD = ninetyDaysAgo.split('T')[0];
+
+      fallbackBookings = fallbackBookings.filter(
+        (b) => b && !DEMO_REQUEST_IDS.includes(b.id) && !DEMO_GUEST_NAMES.includes(b.guestName) &&
+               (!b.createdAt || b.createdAt >= ninetyDaysAgo) &&
+               (!b.checkOut || b.checkOut >= ninetyDaysAgoYMD)
+      );
       return res.status(200).json({ success: true, data: fallbackBookings, source: 'memory' });
     }
 
     // -----------------------------------------------------------------------
-    // POST: Create a new booking request
+    // POST: Create a new booking request OR Reset requests
     // -----------------------------------------------------------------------
     if (req.method === 'POST') {
       const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+      
+      // Reset booking requests
+      if (body?.action === 'reset' || req.query?.action === 'reset') {
+        if (collection) {
+          await collection.deleteMany({});
+          return res.status(200).json({ success: true, data: [], source: 'mongodb' });
+        }
+        fallbackBookings = [];
+        return res.status(200).json({ success: true, data: [], source: 'memory' });
+      }
+
       if (!body) {
         return res.status(400).json({ success: false, error: 'Request body required' });
       }
@@ -191,11 +200,21 @@ export default async function handler(req, res) {
     }
 
     // -----------------------------------------------------------------------
-    // DELETE: Remove a booking request
+    // DELETE: Remove a booking request OR Purge all
     // -----------------------------------------------------------------------
     if (req.method === 'DELETE') {
       const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
       const id = body?.id || req.query?.id;
+      const purgeAll = body?.all === true || req.query?.all === 'true';
+
+      if (purgeAll) {
+        if (collection) {
+          await collection.deleteMany({});
+          return res.status(200).json({ success: true, message: 'All booking requests purged', source: 'mongodb' });
+        }
+        fallbackBookings = [];
+        return res.status(200).json({ success: true, message: 'All booking requests purged', source: 'memory' });
+      }
 
       if (!id) {
         return res.status(400).json({ success: false, error: 'Booking ID required' });

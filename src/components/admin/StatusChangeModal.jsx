@@ -186,7 +186,7 @@ export default function StatusChangeModal({ isOpen, onClose, room, targetStatus,
                     required
                     value={guestName}
                     onChange={(e) => setGuestName(e.target.value)}
-                    placeholder="e.g. Syed Bilal Ahmad / Corporate VIP"
+                    placeholder="e.g. Guest Full Name / Corporate VIP"
                     className="w-full bg-stone-50 border border-stone-300 rounded-lg pl-9 pr-3.5 py-2.5 text-sm text-stone-900 placeholder-stone-400 focus:outline-none focus:border-rose-500 focus:bg-white transition-colors"
                   />
                 </div>

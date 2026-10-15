@@ -61,6 +61,8 @@ export function formatYMD(date = new Date()) {
 }
 
 // Seed dataset categorized by 4 floors and 1 top suite with calendar coordination
+// Seed dataset categorized by 4 floors and 1 top suite
+// Clean slate: all rooms 100% open with zero placeholder date locks
 export const INITIAL_ROOMS = [
   // --- TOP SUITE (SUMMIT PENTHOUSE) ---
   {
@@ -71,7 +73,7 @@ export const INITIAL_ROOMS = [
     floor: 'Top Suite',
     capacity: '4 Guests • 1 Master Grand King + 1 Twin',
     pricePKR: 120000,
-    status: 'available', // 'available' | 'booked' | 'in cleaning'
+    status: 'available',
     amenities: [
       '360° Unobstructed Glacial Panorama',
       'Private Heated Cedar Plunge Pool',
@@ -80,16 +82,7 @@ export const INITIAL_ROOMS = [
       'Private Butler & Concierge Entry'
     ],
     activeBooking: null,
-    // Coordinated calendar reservations for this suite
-    bookedRanges: [
-      {
-        id: 'b-501-1',
-        checkIn: '2026-12-08',
-        checkOut: '2026-12-12',
-        guestName: 'Ambassador Al-Mansoor',
-        source: 'VIP Diplomatic Allocation'
-      }
-    ],
+    bookedRanges: [],
     cleaningInfo: null,
     lastCleanedAt: new Date(Date.now() - 3600000 * 3).toISOString(),
     updatedAt: new Date().toISOString()
@@ -112,15 +105,7 @@ export const INITIAL_ROOMS = [
       'Artisan Espresso Bar'
     ],
     activeBooking: null,
-    bookedRanges: [
-      {
-        id: 'b-401-1',
-        checkIn: '2026-12-04',
-        checkOut: '2026-12-07',
-        guestName: 'Farhan Qureshi',
-        source: 'Website Reservation'
-      }
-    ],
+    bookedRanges: [],
     cleaningInfo: null,
     lastCleanedAt: new Date(Date.now() - 3600000 * 5).toISOString(),
     updatedAt: new Date().toISOString()
@@ -133,7 +118,7 @@ export const INITIAL_ROOMS = [
     floor: 'Floor 4',
     capacity: '2 Guests • 1 King Bed',
     pricePKR: 58000,
-    status: 'in cleaning',
+    status: 'available',
     amenities: [
       'Ceiling Glass Skylight',
       'Rainfall Mountain Shower',
@@ -141,12 +126,7 @@ export const INITIAL_ROOMS = [
     ],
     activeBooking: null,
     bookedRanges: [],
-    cleaningInfo: {
-      assignedTo: 'Turnover Team Alpha (Hamza)',
-      priority: 'Urgent — Check-in today at 4:30 PM',
-      notes: 'Deep sanitization and cedar fragrance renewal in progress.',
-      startedAt: new Date(Date.now() - 3600000 * 1.2).toISOString()
-    },
+    cleaningInfo: null,
     lastCleanedAt: new Date(Date.now() - 86400000).toISOString(),
     updatedAt: new Date().toISOString()
   },
@@ -166,31 +146,8 @@ export const INITIAL_ROOMS = [
       'Stone Hearth Fireplace',
       'Alpine Library Lounge'
     ],
-    activeBooking: {
-      guestName: 'Syed Bilal Ahmad',
-      checkIn: '2026-12-01',
-      checkOut: '2026-12-04',
-      source: 'Other Hotel CMS (Sync)',
-      notes: 'Inaugural soft-launch guest arrival. Welcome mountain tea requested.',
-      bookingRef: 'PK-9821',
-      bookedAt: new Date(Date.now() - 3600000 * 2).toISOString()
-    },
-    bookedRanges: [
-      {
-        id: 'b-301-1',
-        checkIn: '2026-12-01',
-        checkOut: '2026-12-04',
-        guestName: 'Syed Bilal Ahmad',
-        source: 'Other Hotel CMS (Sync)'
-      },
-      {
-        id: 'b-301-2',
-        checkIn: '2026-12-15',
-        checkOut: '2026-12-18',
-        guestName: 'Zubair Shah',
-        source: 'VIP Reservation'
-      }
-    ],
+    activeBooking: null,
+    bookedRanges: [],
     cleaningInfo: null,
     lastCleanedAt: new Date(Date.now() - 86400000 * 2).toISOString(),
     updatedAt: new Date().toISOString()
@@ -232,15 +189,7 @@ export const INITIAL_ROOMS = [
       'Deep Soaking Mountain Bathtub'
     ],
     activeBooking: null,
-    bookedRanges: [
-      {
-        id: 'b-201-1',
-        checkIn: '2026-12-20',
-        checkOut: '2026-12-24',
-        guestName: 'Hassan Mir',
-        source: 'Direct WhatsApp'
-      }
-    ],
+    bookedRanges: [],
     cleaningInfo: null,
     lastCleanedAt: new Date(Date.now() - 3600000 * 4).toISOString(),
     updatedAt: new Date().toISOString()
@@ -259,24 +208,8 @@ export const INITIAL_ROOMS = [
       'Twin Vanities',
       'Smart Climate Control'
     ],
-    activeBooking: {
-      guestName: 'Dr. Ayesha Malik & Family',
-      checkIn: '2026-12-10',
-      checkOut: '2026-12-14',
-      source: 'Direct Phone / WhatsApp',
-      notes: 'Soft launch family stay. Early check-in approved (1:00 PM). Extra blankets.',
-      bookingRef: 'PK-4412',
-      bookedAt: new Date(Date.now() - 3600000 * 4).toISOString()
-    },
-    bookedRanges: [
-      {
-        id: 'b-202-1',
-        checkIn: '2026-12-10',
-        checkOut: '2026-12-14',
-        guestName: 'Dr. Ayesha Malik & Family',
-        source: 'Direct Phone / WhatsApp'
-      }
-    ],
+    activeBooking: null,
+    bookedRanges: [],
     cleaningInfo: null,
     lastCleanedAt: new Date(Date.now() - 86400000).toISOString(),
     updatedAt: new Date().toISOString()
@@ -291,28 +224,15 @@ export const INITIAL_ROOMS = [
     floor: 'Floor 1',
     capacity: '2 Guests • 1 King Bed',
     pricePKR: 42000,
-    status: 'in cleaning',
+    status: 'available',
     amenities: [
       'Pine Forest Garden View',
       'Stone Hearth Fireplace',
       'Custom Mountain Cedar Bath'
     ],
     activeBooking: null,
-    bookedRanges: [
-      {
-        id: 'b-101-1',
-        checkIn: '2026-10-22',
-        checkOut: '2026-10-25',
-        guestName: 'Naveed Akhtar',
-        source: 'OTA Agoda'
-      }
-    ],
-    cleaningInfo: {
-      assignedTo: 'Turnover Team Beta (Tariq)',
-      priority: 'Standard Departure Cleaning',
-      notes: 'Linen turnover and pine logs restocked.',
-      startedAt: new Date(Date.now() - 3600000 * 0.9).toISOString()
-    },
+    bookedRanges: [],
+    cleaningInfo: null,
     lastCleanedAt: new Date(Date.now() - 86400000).toISOString(),
     updatedAt: new Date().toISOString()
   },
@@ -374,6 +294,68 @@ function logAudit(action, roomId, roomNumber, details) {
   }
 }
 
+const DEMO_RANGE_IDS = new Set([
+  'b-501-1',
+  'b-401-1',
+  'b-301-1',
+  'b-301-2',
+  'b-201-1',
+  'b-202-1',
+  'b-101-1'
+]);
+
+const DEMO_GUEST_NAMES = new Set([
+  'Ambassador Al-Mansoor',
+  'Farhan Qureshi',
+  'Syed Bilal Ahmad',
+  'Zubair Shah',
+  'Hassan Mir',
+  'Dr. Ayesha Malik & Family',
+  'Naveed Akhtar',
+  'Malik Zeeshan & Family',
+  'Fatima Zahra Khan'
+]);
+
+function isDemoRange(range) {
+  if (!range) return false;
+  if (range.id && (DEMO_RANGE_IDS.has(range.id) || String(range.id).startsWith('b-demo-'))) return true;
+  if (range.guestName && DEMO_GUEST_NAMES.has(range.guestName)) return true;
+  return false;
+}
+
+export function cleanRoom(room) {
+  if (!room) return room;
+  const isDemoActive = room.activeBooking && (
+    (room.activeBooking.guestName && DEMO_GUEST_NAMES.has(room.activeBooking.guestName)) ||
+    (room.activeBooking.bookingRef && ['PK-9821', 'PK-4412'].includes(room.activeBooking.bookingRef))
+  );
+
+  const ninetyDaysAgoYMD = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+  const cleanedRanges = Array.isArray(room.bookedRanges)
+    ? room.bookedRanges.filter((b) => !isDemoRange(b) && (!b.checkOut || b.checkOut >= ninetyDaysAgoYMD))
+    : [];
+
+  return {
+    ...room,
+    activeBooking: isDemoActive ? null : (room.activeBooking || null),
+    bookedRanges: cleanedRanges
+  };
+}
+
+// Purge obsolete and conflicting localStorage keys on startup
+if (typeof window !== 'undefined') {
+  try {
+    localStorage.removeItem('polaris_hotel_rooms_v4');
+    localStorage.removeItem('polaris_hotel_rooms_v3');
+    localStorage.removeItem('polaris_hotel_rooms_v2');
+    localStorage.removeItem('polaris_hotel_rooms');
+    localStorage.removeItem('polaris_rooms_inventory_v3');
+  } catch (e) {}
+}
+
+let cachedRooms = [];
+
 export const RoomService = {
   /**
    * Subscribe to room status changes in real-time
@@ -384,101 +366,57 @@ export const RoomService = {
   },
 
   /**
-   * Fetch all rooms (immediate local cached read + background cloud sync)
+   * Fetch all rooms directly from database API (/api/rooms).
+   * Ensures mobile phones, laptops, and staff desks see the exact same database inventory.
    */
-  async getRooms() {
+  async getRooms(force = false) {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          if (typeof window !== 'undefined') {
-            setTimeout(() => this.syncWithCloud().catch(() => {}), 100);
-          }
-          return parsed.map((r) => ({
-            ...r,
-            bookedRanges: Array.isArray(r.bookedRanges) ? r.bookedRanges : []
-          }));
+      const res = await fetch(`/api/rooms?t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache'
         }
-      }
-      // Migrate from v2 if available
-      const oldV2 = localStorage.getItem('polaris_hotel_rooms_v2');
-      if (oldV2) {
-        const parsed = JSON.parse(oldV2);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const migrated = parsed.map((r) => {
-            const seed = INITIAL_ROOMS.find((s) => s.id === r.id);
-            return {
-              ...r,
-              bookedRanges: Array.isArray(r.bookedRanges) && r.bookedRanges.length > 0
-                ? r.bookedRanges
-                : (seed?.bookedRanges || [])
-            };
-          });
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
-          return migrated;
-        }
-      }
-    } catch (e) {
-      console.warn('Could not read from localStorage, using initial rooms');
-    }
-    // Initialize default seed
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_ROOMS));
-    if (typeof window !== 'undefined') {
-      setTimeout(() => this.syncWithCloud().catch(() => {}), 100);
-    }
-    return [...INITIAL_ROOMS];
-  },
-
-  /**
-   * Sync with cloud /api/rooms (MongoDB Atlas on Vercel / Hostinger)
-   */
-  async syncWithCloud() {
-    if (typeof window === 'undefined') return;
-    try {
-      const res = await fetch('/api/rooms', { cache: 'no-store' });
+      });
       if (res.ok) {
         const json = await res.json();
         if (json.success && Array.isArray(json.data) && json.data.length > 0) {
-          const raw = localStorage.getItem(STORAGE_KEY);
-          const localRooms = raw ? JSON.parse(raw) : [];
-
-          // Smart merge: never overwrite fresher local changes with stale cloud responses
-          const merged = json.data.map((cloudRoom) => {
-            const local = localRooms.find((l) => l.id === cloudRoom.id);
-            if (!local) return cloudRoom;
-            const localTime = new Date(local.updatedAt || 0).getTime();
-            const cloudTime = new Date(cloudRoom.updatedAt || 0).getTime();
-            if (localTime > cloudTime) {
-              // Local is more recent, push local room state to cloud
-              fetch('/api/rooms', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(local)
-              }).catch(() => {});
-              return local;
-            }
-            return cloudRoom;
-          });
-
-          // Retain any locally added rooms not yet in cloud
-          localRooms.forEach((local) => {
-            if (!merged.some((m) => m.id === local.id)) {
-              merged.push(local);
-            }
-          });
-
-          const currentStr = localStorage.getItem(STORAGE_KEY);
-          const mergedStr = JSON.stringify(merged);
-          if (currentStr !== mergedStr) {
-            localStorage.setItem(STORAGE_KEY, mergedStr);
-            notifyListeners(merged);
-          }
+          const cleaned = json.data.map(cleanRoom);
+          cachedRooms = cleaned;
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(cleaned));
+          } catch (e) {}
+          notifyListeners(cleaned);
+          return [...cleaned];
         }
       }
     } catch (e) {
-      // offline / local fallback
+      console.warn('[RoomService] Database API unreachable, falling back to local cache:', e);
     }
+
+    // Fallback only if database network call fails completely (offline device)
+    if (cachedRooms.length > 0) {
+      return [...cachedRooms];
+    }
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          cachedRooms = parsed.map(cleanRoom);
+          return [...cachedRooms];
+        }
+      }
+    } catch (e) {}
+
+    return INITIAL_ROOMS.map(cleanRoom);
+  },
+
+  /**
+   * Force sync with database API
+   */
+  async syncWithCloud() {
+    return this.getRooms(true);
   },
 
   /**
@@ -494,19 +432,9 @@ export const RoomService = {
   },
 
   /**
-   * Add a new room
+   * Add a new room -> immediately persists to database
    */
   async addRoom(roomData) {
-    const rooms = await this.getRooms();
-
-    // Check duplicate room number
-    const duplicate = rooms.find(
-      (r) => r.roomNumber.trim().toLowerCase() === roomData.roomNumber.trim().toLowerCase()
-    );
-    if (duplicate) {
-      throw new Error(`Room #${roomData.roomNumber} already exists in the inventory.`);
-    }
-
     const newRoom = {
       id: 'room-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
       roomNumber: roomData.roomNumber.trim(),
@@ -515,23 +443,31 @@ export const RoomService = {
       floor: roomData.floor || 'Floor 1',
       capacity: roomData.capacity || '2 Guests • 1 King Bed',
       pricePKR: Number(roomData.pricePKR) || 45000,
-      status: roomData.status || 'available', // 'available' | 'booked' | 'in cleaning'
+      status: roomData.status || 'available',
       amenities: Array.isArray(roomData.amenities)
         ? roomData.amenities
         : (roomData.amenities || 'Scenic Mountain View, Private Bath, Climate Control')
             .split(',')
             .map((s) => s.trim())
             .filter(Boolean),
-      activeBooking: roomData.status === 'booked' && roomData.activeBooking ? roomData.activeBooking : null,
+      activeBooking: null,
       bookedRanges: Array.isArray(roomData.bookedRanges) ? roomData.bookedRanges : [],
-      cleaningInfo: roomData.status === 'in cleaning' && roomData.cleaningInfo ? roomData.cleaningInfo : null,
+      cleaningInfo: null,
       lastCleanedAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
 
-    rooms.push(newRoom);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(rooms));
-    
+    const res = await fetch('/api/rooms', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newRoom)
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to save new room to database.');
+    }
+
     logAudit('ROOM_CREATED', newRoom.id, newRoom.roomNumber, {
       name: newRoom.name,
       floor: newRoom.floor,
@@ -539,121 +475,93 @@ export const RoomService = {
       status: newRoom.status
     });
 
-    notifyListeners(rooms);
+    await this.getRooms(true);
     return newRoom;
   },
 
   /**
-   * Remove / Delete a room
+   * Remove / Delete a room -> immediately deletes from database
    */
   async deleteRoom(roomId) {
-    const rooms = await this.getRooms();
-    const index = rooms.findIndex((r) => r.id === roomId);
-
-    if (index === -1) {
-      throw new Error(`Room with ID "${roomId}" not found.`);
-    }
-
-    const deletedRoom = rooms[index];
-    rooms.splice(index, 1);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(rooms));
-
-    logAudit('ROOM_DELETED', deletedRoom.id, deletedRoom.roomNumber, {
-      name: deletedRoom.name,
-      floor: deletedRoom.floor
+    const res = await fetch('/api/rooms', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: roomId })
     });
 
-    notifyListeners(rooms);
-    return deletedRoom;
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to delete room from database.');
+    }
+
+    logAudit('ROOM_DELETED', roomId, '', {});
+    await this.getRooms(true);
+    return { id: roomId };
   },
 
   /**
-   * Update Room Price per night (PKR)
+   * Update Room Price per night (PKR) -> persists to database
    */
   async updatePrice(roomId, newPricePKR) {
     const price = Number(newPricePKR);
     if (isNaN(price) || price <= 0) {
       throw new Error('Please enter a valid positive price per night.');
     }
-
     return this.updateRoom(roomId, { pricePKR: price });
   },
 
   /**
-   * Update room specifications / fields
+   * Update room specifications / fields -> persists to database
    */
   async updateRoom(roomId, fields = {}) {
-    const rooms = await this.getRooms();
-    const index = rooms.findIndex((r) => r.id === roomId);
-
-    if (index === -1) {
-      throw new Error(`Room with ID "${roomId}" not found.`);
-    }
-
-    const room = { ...rooms[index] };
-    const prevPrice = room.pricePKR;
-
-    // Apply allowed updates
-    if (fields.roomNumber) room.roomNumber = fields.roomNumber.trim();
-    if (fields.name) room.name = fields.name.trim();
-    if (fields.floor) room.floor = fields.floor;
-    if (fields.tier) room.tier = fields.tier;
-    if (fields.capacity) room.capacity = fields.capacity;
-    if (fields.pricePKR !== undefined) room.pricePKR = Number(fields.pricePKR);
+    const payload = {
+      id: roomId,
+      ...fields,
+      updatedAt: new Date().toISOString()
+    };
+    if (fields.roomNumber) payload.roomNumber = fields.roomNumber.trim();
+    if (fields.name) payload.name = fields.name.trim();
+    if (fields.pricePKR !== undefined) payload.pricePKR = Number(fields.pricePKR);
     if (fields.amenities) {
-      room.amenities = Array.isArray(fields.amenities)
+      payload.amenities = Array.isArray(fields.amenities)
         ? fields.amenities
         : fields.amenities.split(',').map((s) => s.trim()).filter(Boolean);
     }
 
-    room.updatedAt = new Date().toISOString();
-    rooms[index] = room;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(rooms));
+    const res = await fetch('/api/rooms', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
 
-    if (fields.pricePKR !== undefined && fields.pricePKR !== prevPrice) {
-      logAudit('PRICE_CHANGED', room.id, room.roomNumber, {
-        previousPrice: prevPrice,
-        newPrice: room.pricePKR
-      });
-    } else {
-      logAudit('ROOM_UPDATED', room.id, room.roomNumber, fields);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to update room in database.');
     }
 
-    // Sync room updates to cloud
-    try {
-      if (typeof window !== 'undefined') {
-        fetch('/api/rooms', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(room)
-        }).catch(() => {});
-      }
-    } catch (e) {}
-
-    notifyListeners(rooms);
-    return room;
+    logAudit('ROOM_UPDATED', roomId, fields.roomNumber || '', fields);
+    const freshRooms = await this.getRooms(true);
+    return freshRooms.find((r) => r.id === roomId) || payload;
   },
 
   /**
    * Update a room's operational status ('available' or 'in cleaning'),
    * or lock specific dates if 'booked' is passed.
-   * A ROOM CAN NEVER BE LOCKED AS A WHOLE!
    */
   async updateStatus(roomId, newStatus, meta = {}) {
-    const rooms = await this.getRooms();
-    const index = rooms.findIndex((r) => r.id === roomId);
-
-    if (index === -1) {
-      throw new Error(`Room with ID "${roomId}" not found.`);
+    let current = cachedRooms.find((r) => r.id === roomId);
+    if (!current) {
+      const fresh = await this.getRooms();
+      current = fresh.find((r) => r.id === roomId);
     }
 
-    const room = { ...rooms[index] };
-    const prevStatus = room.status;
+    const updates = {
+      id: roomId,
+      updatedAt: new Date().toISOString()
+    };
 
-    // A room can NEVER be locked as a whole!
-    // If 'booked' or dates are passed, add to bookedRanges and keep room available for other dates
     if (newStatus === 'booked') {
-      room.status = 'available';
+      updates.status = 'available';
       if (meta.checkIn && meta.checkOut) {
         const bookingEntry = {
           id: 'b-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
@@ -665,103 +573,62 @@ export const RoomService = {
           bookingRef: meta.bookingRef || 'PK-' + Math.floor(1000 + Math.random() * 9000),
           createdAt: new Date().toISOString()
         };
-        room.activeBooking = bookingEntry;
+        updates.activeBooking = bookingEntry;
 
-        // Synchronize into bookedRanges calendar
-        room.bookedRanges = Array.isArray(room.bookedRanges) ? [...room.bookedRanges] : [];
-        const alreadyHas = room.bookedRanges.some(
-          (b) => b.checkIn === bookingEntry.checkIn && b.checkOut === bookingEntry.checkOut
-        );
-        if (!alreadyHas) {
-          room.bookedRanges.push(bookingEntry);
+        const currentRanges = Array.isArray(current?.bookedRanges) ? [...current.bookedRanges] : [];
+        if (!currentRanges.some((b) => b.checkIn === bookingEntry.checkIn && b.checkOut === bookingEntry.checkOut)) {
+          currentRanges.push(bookingEntry);
         }
-
-        logAudit('ROOM_DATES_LOCKED', room.id, room.roomNumber, {
-          guestName: bookingEntry.guestName,
-          source: bookingEntry.source,
-          checkIn: bookingEntry.checkIn,
-          checkOut: bookingEntry.checkOut
-        });
+        updates.bookedRanges = currentRanges;
       }
     } else if (newStatus === 'in cleaning') {
-      room.status = 'in cleaning';
-      room.cleaningInfo = {
+      updates.status = 'in cleaning';
+      updates.cleaningInfo = {
         assignedTo: meta.assignedTo || 'Housekeeping Duty Team',
         priority: meta.priority || 'Standard Turnover',
         notes: meta.notes || 'Turnover initiated from front desk',
         startedAt: new Date().toISOString()
       };
-      room.activeBooking = null;
-
-      logAudit('ROOM_MARKED_CLEANING', room.id, room.roomNumber, {
-        assignedTo: room.cleaningInfo.assignedTo,
-        priority: room.cleaningInfo.priority,
-        notes: room.cleaningInfo.notes
-      });
+      updates.activeBooking = null;
     } else if (newStatus === 'available') {
-      room.status = 'available';
-      room.activeBooking = null;
-      room.cleaningInfo = null;
-      room.lastCleanedAt = new Date().toISOString();
-
-      logAudit('ROOM_MARKED_AVAILABLE', room.id, room.roomNumber, {
-        previousStatus: prevStatus,
-        inspectedBy: meta.inspectedBy || 'Front Desk Supervisor',
-        note: 'Inspected and certified ready for guest booking'
-      });
+      updates.status = 'available';
+      updates.activeBooking = null;
+      updates.cleaningInfo = null;
+      updates.lastCleanedAt = new Date().toISOString();
     }
 
-    room.updatedAt = new Date().toISOString();
-    rooms[index] = room;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(rooms));
+    const res = await fetch('/api/rooms', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates)
+    });
 
-    // Immediately push update to cloud API so changes persist in MongoDB Atlas
-    try {
-      if (typeof window !== 'undefined') {
-        fetch('/api/rooms', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            id: roomId,
-            status: room.status,
-            cleaningInfo: room.cleaningInfo,
-            activeBooking: room.activeBooking,
-            bookedRanges: room.bookedRanges,
-            lastCleanedAt: room.lastCleanedAt,
-            updatedAt: room.updatedAt
-          })
-        }).catch(() => {});
-      }
-    } catch (e) {
-      // offline fallback
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to update room status in database.');
     }
 
-    notifyListeners(rooms);
-    return room;
+    logAudit('STATUS_UPDATED', roomId, current?.roomNumber || '', { status: newStatus, meta });
+    const fresh = await this.getRooms(true);
+    return fresh.find((r) => r.id === roomId) || updates;
   },
 
-  /**
-   * Quick action: Mark room as available immediately
-   */
   async markAvailable(roomId, inspectedBy = 'Front Desk Duty') {
     return this.updateStatus(roomId, 'available', { inspectedBy });
   },
 
   /**
-   * Synchronously compute all occupied dates (YYYY-MM-DD) for a room,
-   * combining activeBooking, bookedRanges, and any approved booking requests.
+   * Synchronously compute all occupied dates (YYYY-MM-DD) for a room
    */
   getBookedDatesForRoomSync(room, requests = []) {
     if (!room) return [];
     const bookedSet = new Set();
 
-    // 1. Current active booking on the room
     if (room.activeBooking && room.activeBooking.checkIn && room.activeBooking.checkOut) {
       const dates = getBookedNightsInRange(room.activeBooking.checkIn, room.activeBooking.checkOut);
       dates.forEach((d) => bookedSet.add(d));
     }
 
-    // 2. All scheduled reservations / blocks in room.bookedRanges
     if (Array.isArray(room.bookedRanges)) {
       room.bookedRanges.forEach((range) => {
         if (range && range.checkIn && range.checkOut) {
@@ -771,7 +638,6 @@ export const RoomService = {
       });
     }
 
-    // 3. Any approved or pending booking requests for this room
     if (Array.isArray(requests)) {
       requests
         .filter((req) => req.roomId === room.id && (req.status === 'approved' || req.status === 'pending') && req.checkIn && req.checkOut)
@@ -784,37 +650,24 @@ export const RoomService = {
     return Array.from(bookedSet).sort();
   },
 
-  /**
-   * Asynchronously compute all occupied dates for a room by ID
-   */
   async getBookedDatesForRoom(roomId) {
     const rooms = await this.getRooms();
     const room = rooms.find((r) => r.id === roomId);
     if (!room) return [];
-
-    let requests = [];
-    try {
-      if (typeof window !== 'undefined') {
-        const raw = localStorage.getItem('polaris_booking_requests_v2');
-        if (raw) requests = JSON.parse(raw);
-      }
-    } catch (e) {
-      // silent
-    }
-
-    return this.getBookedDatesForRoomSync(room, requests);
+    return this.getBookedDatesForRoomSync(room, []);
   },
 
   /**
-   * Add a scheduled booked date range for a room
+   * Add a scheduled booked date range for a room -> persists to database
    */
   async addBookedRange(roomId, range) {
-    const rooms = await this.getRooms();
-    const index = rooms.findIndex((r) => r.id === roomId);
-    if (index === -1) throw new Error('Room not found');
+    let current = cachedRooms.find((r) => r.id === roomId);
+    if (!current) {
+      const fresh = await this.getRooms();
+      current = fresh.find((r) => r.id === roomId);
+    }
+    if (!current) throw new Error('Room not found');
 
-    const room = { ...rooms[index] };
-    room.bookedRanges = Array.isArray(room.bookedRanges) ? [...room.bookedRanges] : [];
     const newEntry = {
       id: 'b-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
       checkIn: range.checkIn,
@@ -823,74 +676,79 @@ export const RoomService = {
       source: range.source || 'Manual Calendar Block',
       createdAt: new Date().toISOString()
     };
-    room.bookedRanges.push(newEntry);
-    room.updatedAt = new Date().toISOString();
-    rooms[index] = room;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(rooms));
 
-    // Sync booked ranges to cloud database (MongoDB Atlas / Hostinger API)
-    try {
-      if (typeof window !== 'undefined') {
-        fetch('/api/rooms', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: roomId, bookedRanges: room.bookedRanges, updatedAt: room.updatedAt })
-        }).catch(() => {});
-      }
-    } catch (e) {
-      // offline fallback
+    const updatedRanges = Array.isArray(current.bookedRanges) ? [...current.bookedRanges, newEntry] : [newEntry];
+
+    const res = await fetch('/api/rooms', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: roomId,
+        bookedRanges: updatedRanges,
+        updatedAt: new Date().toISOString()
+      })
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to save date block to database.');
     }
 
-    notifyListeners(rooms);
+    await this.getRooms(true);
     return newEntry;
   },
 
   /**
-   * Remove a scheduled booked date range
+   * Remove a scheduled booked date range -> persists to database
    */
   async removeBookedRange(roomId, rangeId) {
-    const rooms = await this.getRooms();
-    const index = rooms.findIndex((r) => r.id === roomId);
-    if (index === -1) throw new Error('Room not found');
-
-    const room = { ...rooms[index] };
-    if (Array.isArray(room.bookedRanges)) {
-      room.bookedRanges = room.bookedRanges.filter((b) => b.id !== rangeId);
-      room.updatedAt = new Date().toISOString();
-      rooms[index] = room;
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(rooms));
-
-      // Sync updated booked ranges to cloud database
-      try {
-        if (typeof window !== 'undefined') {
-          fetch('/api/rooms', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: roomId, bookedRanges: room.bookedRanges, updatedAt: room.updatedAt })
-          }).catch(() => {});
-        }
-      } catch (e) {
-        // offline fallback
-      }
-
-      notifyListeners(rooms);
+    let current = cachedRooms.find((r) => r.id === roomId);
+    if (!current) {
+      const fresh = await this.getRooms();
+      current = fresh.find((r) => r.id === roomId);
     }
-    return room;
+    if (!current) throw new Error('Room not found');
+
+    const updatedRanges = (current.bookedRanges || []).filter((b) => b.id !== rangeId);
+
+    const res = await fetch('/api/rooms', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: roomId,
+        bookedRanges: updatedRanges,
+        updatedAt: new Date().toISOString()
+      })
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to remove date block from database.');
+    }
+
+    await this.getRooms(true);
+    return current;
   },
 
   /**
-   * Reset rooms back to default seed state
+   * Reset database inventory to default initial suites
    */
   async resetToDefaults() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_ROOMS));
-    localStorage.removeItem(HISTORY_KEY);
-    notifyListeners(INITIAL_ROOMS);
-    return [...INITIAL_ROOMS];
+    const res = await fetch('/api/rooms', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'reset' })
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to reset database inventory.');
+    }
+
+    const fresh = await this.getRooms(true);
+    return fresh;
   },
 
-  /**
-   * Calculate summary KPI stats for dashboard
-   */
   calculateStats(rooms) {
     const total = rooms.length;
     const available = rooms.filter((r) => r.status === 'available').length;
@@ -899,7 +757,6 @@ export const RoomService = {
     const booked = hasBookedRanges;
     const occupancyRate = total > 0 ? Math.round((hasBookedRanges / total) * 100) : 0;
 
-    // Floor counts
     const byCategory = {
       'Top Suite': rooms.filter((r) => r.floor === 'Top Suite').length,
       'Floor 4': rooms.filter((r) => r.floor === 'Floor 4').length,
@@ -918,3 +775,21 @@ export const RoomService = {
     };
   }
 };
+
+// Automatic real-time background sync every 3 seconds while active
+if (typeof window !== 'undefined') {
+  setInterval(() => {
+    if (document.visibilityState === 'visible') {
+      RoomService.getRooms().catch(() => {});
+    }
+  }, 3000);
+
+  window.addEventListener('focus', () => {
+    RoomService.getRooms().catch(() => {});
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      RoomService.getRooms().catch(() => {});
+    }
+  });
+}

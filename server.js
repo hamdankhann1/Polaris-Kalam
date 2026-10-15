@@ -33,6 +33,15 @@ const DB_NAME = process.env.MONGODB_DB_NAME || 'polaris_hotel';
 app.use(cors());
 app.use(express.json());
 
+// Strict Real-Time No-Cache Headers for all API calls
+app.use('/api', (req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Surrogate-Control', 'no-store');
+  next();
+});
+
 // =========================================================================
 // SEED DATA (Used on first launch to populate local MongoDB)
 // =========================================================================
@@ -54,15 +63,7 @@ const INITIAL_ROOMS = [
       'Private Butler & Concierge Entry'
     ],
     activeBooking: null,
-    bookedRanges: [
-      {
-        id: 'b-501-1',
-        checkIn: '2026-12-08',
-        checkOut: '2026-12-12',
-        guestName: 'Ambassador Al-Mansoor',
-        source: 'VIP Diplomatic Allocation'
-      }
-    ],
+    bookedRanges: [],
     cleaningInfo: null,
     lastCleanedAt: new Date(Date.now() - 3600000 * 3).toISOString(),
     updatedAt: new Date().toISOString()
@@ -83,15 +84,7 @@ const INITIAL_ROOMS = [
       'Artisan Espresso Bar'
     ],
     activeBooking: null,
-    bookedRanges: [
-      {
-        id: 'b-401-1',
-        checkIn: '2026-12-04',
-        checkOut: '2026-12-07',
-        guestName: 'Farhan Qureshi',
-        source: 'Website Reservation'
-      }
-    ],
+    bookedRanges: [],
     cleaningInfo: null,
     lastCleanedAt: new Date(Date.now() - 3600000 * 5).toISOString(),
     updatedAt: new Date().toISOString()
@@ -104,7 +97,7 @@ const INITIAL_ROOMS = [
     floor: 'Floor 4',
     capacity: '2 Guests • 1 King Bed',
     pricePKR: 58000,
-    status: 'in cleaning',
+    status: 'available',
     amenities: [
       'Ceiling Glass Skylight',
       'Rainfall Mountain Shower',
@@ -112,12 +105,7 @@ const INITIAL_ROOMS = [
     ],
     activeBooking: null,
     bookedRanges: [],
-    cleaningInfo: {
-      assignedTo: 'Turnover Team Alpha (Hamza)',
-      priority: 'Urgent — Check-in today at 4:30 PM',
-      notes: 'Deep sanitization and cedar fragrance renewal in progress.',
-      startedAt: new Date(Date.now() - 3600000 * 1.2).toISOString()
-    },
+    cleaningInfo: null,
     lastCleanedAt: new Date(Date.now() - 86400000).toISOString(),
     updatedAt: new Date().toISOString()
   },
@@ -135,31 +123,8 @@ const INITIAL_ROOMS = [
       'Stone Hearth Fireplace',
       'Alpine Library Lounge'
     ],
-    activeBooking: {
-      guestName: 'Syed Bilal Ahmad',
-      checkIn: '2026-12-01',
-      checkOut: '2026-12-04',
-      source: 'Other Hotel CMS (Sync)',
-      notes: 'Inaugural soft-launch guest arrival. Welcome mountain tea requested.',
-      bookingRef: 'PK-9821',
-      bookedAt: new Date(Date.now() - 3600000 * 2).toISOString()
-    },
-    bookedRanges: [
-      {
-        id: 'b-301-1',
-        checkIn: '2026-12-01',
-        checkOut: '2026-12-04',
-        guestName: 'Syed Bilal Ahmad',
-        source: 'Other Hotel CMS (Sync)'
-      },
-      {
-        id: 'b-301-2',
-        checkIn: '2026-12-15',
-        checkOut: '2026-12-18',
-        guestName: 'Zubair Shah',
-        source: 'VIP Reservation'
-      }
-    ],
+    activeBooking: null,
+    bookedRanges: [],
     cleaningInfo: null,
     lastCleanedAt: new Date(Date.now() - 86400000 * 2).toISOString(),
     updatedAt: new Date().toISOString()
@@ -199,15 +164,7 @@ const INITIAL_ROOMS = [
       'Deep Soaking Mountain Bathtub'
     ],
     activeBooking: null,
-    bookedRanges: [
-      {
-        id: 'b-201-1',
-        checkIn: '2026-12-20',
-        checkOut: '2026-12-24',
-        guestName: 'Hassan Mir',
-        source: 'Direct WhatsApp'
-      }
-    ],
+    bookedRanges: [],
     cleaningInfo: null,
     lastCleanedAt: new Date(Date.now() - 3600000 * 4).toISOString(),
     updatedAt: new Date().toISOString()
@@ -226,24 +183,8 @@ const INITIAL_ROOMS = [
       'Twin Vanities',
       'Smart Climate Control'
     ],
-    activeBooking: {
-      guestName: 'Dr. Ayesha Malik & Family',
-      checkIn: '2026-12-10',
-      checkOut: '2026-12-14',
-      source: 'Direct Phone / WhatsApp',
-      notes: 'Soft launch family stay. Early check-in approved (1:00 PM). Extra blankets.',
-      bookingRef: 'PK-4412',
-      bookedAt: new Date(Date.now() - 3600000 * 4).toISOString()
-    },
-    bookedRanges: [
-      {
-        id: 'b-202-1',
-        checkIn: '2026-12-10',
-        checkOut: '2026-12-14',
-        guestName: 'Dr. Ayesha Malik & Family',
-        source: 'Direct Phone / WhatsApp'
-      }
-    ],
+    activeBooking: null,
+    bookedRanges: [],
     cleaningInfo: null,
     lastCleanedAt: new Date(Date.now() - 86400000).toISOString(),
     updatedAt: new Date().toISOString()
@@ -256,28 +197,15 @@ const INITIAL_ROOMS = [
     floor: 'Floor 1',
     capacity: '2 Guests • 1 King Bed',
     pricePKR: 42000,
-    status: 'in cleaning',
+    status: 'available',
     amenities: [
       'Pine Forest Garden View',
       'Stone Hearth Fireplace',
       'Custom Mountain Cedar Bath'
     ],
     activeBooking: null,
-    bookedRanges: [
-      {
-        id: 'b-101-1',
-        checkIn: '2026-10-22',
-        checkOut: '2026-10-25',
-        guestName: 'Naveed Akhtar',
-        source: 'OTA Agoda'
-      }
-    ],
-    cleaningInfo: {
-      assignedTo: 'Turnover Team Beta (Tariq)',
-      priority: 'Standard Departure Cleaning',
-      notes: 'Linen turnover and pine logs restocked.',
-      startedAt: new Date(Date.now() - 3600000 * 0.9).toISOString()
-    },
+    bookedRanges: [],
+    cleaningInfo: null,
     lastCleanedAt: new Date(Date.now() - 86400000).toISOString(),
     updatedAt: new Date().toISOString()
   },
@@ -303,50 +231,25 @@ const INITIAL_ROOMS = [
   }
 ];
 
-const INITIAL_REQUESTS = [
-  {
-    id: 'req-101',
-    guestName: 'Malik Zeeshan & Family',
-    phone: '+92 300 8554210',
-    email: 'zeeshan.malik@outlook.com',
-    roomId: 'room-top-suite-501',
-    roomNumber: '501',
-    roomName: 'The Celestial Summit Penthouse',
-    tier: 'Top Suite / Presidential',
-    floor: 'Top Suite',
-    pricePKR: 120000,
-    checkIn: '2026-12-05',
-    checkOut: '2026-12-08',
-    nights: 3,
-    guests: '3 Adults, 1 Child',
-    notes: 'Inaugural soft launch family vacation. Requesting private Swat airport transfer and late arrival dinner.',
-    status: 'pending',
-    createdAt: new Date(Date.now() - 3600000 * 2).toISOString()
-  },
-  {
-    id: 'req-102',
-    guestName: 'Fatima Zahra Khan',
-    phone: '+92 321 4455889',
-    email: 'fatima.zkhan@gmail.com',
-    roomId: 'room-401',
-    roomNumber: '401',
-    roomName: 'Starlight Glacier Horizon Suite',
-    tier: 'Executive Panoramic Suite',
-    floor: 'Floor 4',
-    pricePKR: 75000,
-    checkIn: '2026-12-12',
-    checkOut: '2026-12-14',
-    nights: 2,
-    guests: '2 Adults',
-    notes: 'Soft launch anniversary celebration trip. Please prepare fireplace cedar logs and mountain tea.',
-    status: 'pending',
-    createdAt: new Date(Date.now() - 3600000 * 8).toISOString()
-  }
+const DEMO_RANGE_IDS = ['b-501-1', 'b-401-1', 'b-301-1', 'b-301-2', 'b-201-1', 'b-202-1', 'b-101-1'];
+const DEMO_GUEST_NAMES = [
+  'Malik Zeeshan & Family',
+  'Fatima Zahra Khan',
+  'Ambassador Al-Mansoor',
+  'Farhan Qureshi',
+  'Syed Bilal Ahmad',
+  'Zubair Shah',
+  'Hassan Mir',
+  'Dr. Ayesha Malik & Family',
+  'Naveed Akhtar'
 ];
+
+// Zero demo seed requests - production server starts clean
+const INITIAL_REQUESTS = [];
 
 // In-memory fallback if MongoDB is starting up
 let memoryRooms = [...INITIAL_ROOMS];
-let memoryBookings = [...INITIAL_REQUESTS];
+let memoryBookings = [];
 
 // =========================================================================
 // MONGODB COMMUNITY CONNECTION & SEEDING
@@ -369,18 +272,45 @@ async function initMongoDB() {
     const roomsCol = db.collection('rooms');
     const bookingsCol = db.collection('booking_requests');
 
+    // Permanently purge any legacy demo booking requests from MongoDB
+    try {
+      await bookingsCol.deleteMany({
+        $or: [
+          { id: { $in: ['req-101', 'req-102'] } },
+          { guestName: { $in: DEMO_GUEST_NAMES } }
+        ]
+      });
+      await roomsCol.updateMany(
+        {},
+        {
+          $pull: {
+            bookedRanges: {
+              $or: [
+                { id: { $in: DEMO_RANGE_IDS } },
+                { guestName: { $in: DEMO_GUEST_NAMES } }
+              ]
+            }
+          }
+        }
+      );
+      await roomsCol.updateMany(
+        {
+          $or: [
+            { 'activeBooking.guestName': { $in: DEMO_GUEST_NAMES } },
+            { 'activeBooking.bookingRef': { $in: ['PK-9821', 'PK-4412'] } }
+          ]
+        },
+        { $set: { activeBooking: null } }
+      );
+    } catch (e) {
+      console.warn('[MongoDB Warning] Demo purge notice:', e.message);
+    }
+
     const roomsCount = await roomsCol.countDocuments();
     if (roomsCount === 0) {
       console.log('[MongoDB] Seeding initial room inventory into local database...');
       await roomsCol.insertMany(INITIAL_ROOMS);
       console.log(`[MongoDB] Seeded ${INITIAL_ROOMS.length} rooms.`);
-    }
-
-    const bookingsCount = await bookingsCol.countDocuments();
-    if (bookingsCount === 0) {
-      console.log('[MongoDB] Seeding initial demo booking requests into local database...');
-      await bookingsCol.insertMany(INITIAL_REQUESTS);
-      console.log(`[MongoDB] Seeded ${INITIAL_REQUESTS.length} booking requests.`);
     }
 
     // Create helpful indexes
@@ -425,21 +355,63 @@ app.get('/api/health', (req, res) => {
 // 1. GET /api/bookings
 app.get('/api/bookings', async (req, res) => {
   try {
+    const DEMO_REQUEST_IDS = ['req-101', 'req-102'];
+    const DEMO_GUEST_NAMES = [
+      'Malik Zeeshan & Family',
+      'Fatima Zahra Khan',
+      'Ambassador Al-Mansoor',
+      'Farhan Qureshi',
+      'Syed Bilal Ahmad',
+      'Zubair Shah',
+      'Hassan Mir',
+      'Dr. Ayesha Malik & Family',
+      'Naveed Akhtar'
+    ];
+
+    const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+    const ninetyDaysAgoYMD = ninetyDaysAgo.split('T')[0];
+
     if (db) {
+      try {
+        await db.collection('booking_requests').deleteMany({
+          $or: [
+            { id: { $in: DEMO_REQUEST_IDS } },
+            { guestName: { $in: DEMO_GUEST_NAMES } },
+            { createdAt: { $lt: ninetyDaysAgo } },
+            { checkOut: { $lt: ninetyDaysAgoYMD } }
+          ]
+        });
+      } catch (e) {}
+
       const docs = await db.collection('booking_requests').find({}).sort({ createdAt: -1 }).toArray();
       const sanitized = docs.map(({ _id, ...rest }) => rest);
       return res.json({ success: true, data: sanitized, source: 'mongodb' });
     }
+
+    memoryBookings = memoryBookings.filter(
+      (b) => b && !DEMO_REQUEST_IDS.includes(b.id) && !DEMO_GUEST_NAMES.includes(b.guestName) &&
+             (!b.createdAt || b.createdAt >= ninetyDaysAgo) &&
+             (!b.checkOut || b.checkOut >= ninetyDaysAgoYMD)
+    );
     return res.json({ success: true, data: memoryBookings, source: 'memory' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
-// 2. POST /api/bookings (Create a booking request from /booking page or staff)
+// 2. POST /api/bookings (Create a booking request OR Reset)
 app.post('/api/bookings', async (req, res) => {
   try {
     const body = req.body;
+    if (body?.action === 'reset' || req.query?.action === 'reset') {
+      if (db) {
+        await db.collection('booking_requests').deleteMany({});
+        return res.json({ success: true, data: [], source: 'mongodb' });
+      }
+      memoryBookings = [];
+      return res.json({ success: true, data: [], source: 'memory' });
+    }
+
     if (!body) return res.status(400).json({ success: false, error: 'Booking payload required' });
 
     const newBooking = {
@@ -509,6 +481,16 @@ app.put('/api/bookings', async (req, res) => {
 // 4. DELETE /api/bookings
 app.delete('/api/bookings', async (req, res) => {
   try {
+    const purgeAll = req.body?.all === true || req.query?.all === 'true';
+    if (purgeAll) {
+      if (db) {
+        await db.collection('booking_requests').deleteMany({});
+        return res.json({ success: true, message: 'All bookings purged', source: 'mongodb' });
+      }
+      memoryBookings = [];
+      return res.json({ success: true, message: 'All bookings purged', source: 'memory' });
+    }
+
     const id = req.body?.id || req.query?.id;
     if (!id) return res.status(400).json({ success: false, error: 'Booking ID required' });
 
@@ -529,11 +511,74 @@ app.delete('/api/bookings', async (req, res) => {
 // 1. GET /api/rooms
 app.get('/api/rooms', async (req, res) => {
   try {
+    const DEMO_RANGE_IDS = ['b-501-1', 'b-401-1', 'b-301-1', 'b-301-2', 'b-201-1', 'b-202-1', 'b-101-1'];
+    const DEMO_GUEST_NAMES = [
+      'Ambassador Al-Mansoor',
+      'Farhan Qureshi',
+      'Syed Bilal Ahmad',
+      'Zubair Shah',
+      'Hassan Mir',
+      'Dr. Ayesha Malik & Family',
+      'Naveed Akhtar'
+    ];
+
     if (db) {
-      const docs = await db.collection('rooms').find({}).toArray();
+      try {
+        await db.collection('rooms').updateMany(
+          {},
+          {
+            $pull: {
+              bookedRanges: {
+                $or: [
+                  { id: { $in: DEMO_RANGE_IDS } },
+                  { guestName: { $in: DEMO_GUEST_NAMES } }
+                ]
+              }
+            }
+          }
+        );
+        await db.collection('rooms').updateMany(
+          {
+            $or: [
+              { 'activeBooking.guestName': { $in: DEMO_GUEST_NAMES } },
+              { 'activeBooking.bookingRef': { $in: ['PK-9821', 'PK-4412'] } }
+            ]
+          },
+          { $set: { activeBooking: null } }
+        );
+
+        // Automatically declutter expired past booked ranges older than 3 months (90 days)
+        const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+        const ninetyDaysAgoYMD = ninetyDaysAgo.split('T')[0];
+
+        await db.collection('rooms').updateMany(
+          {},
+          {
+            $pull: {
+              bookedRanges: {
+                checkOut: { $lt: ninetyDaysAgoYMD }
+              }
+            }
+          }
+        );
+      } catch (purgeErr) {}
+
+      let docs = await db.collection('rooms').find({}).toArray();
+      if (docs.length === 0) {
+        await db.collection('rooms').insertMany(INITIAL_ROOMS);
+        docs = await db.collection('rooms').find({}).toArray();
+      }
       const sanitized = docs.map(({ _id, ...rest }) => rest);
       return res.json({ success: true, data: sanitized, source: 'mongodb' });
     }
+
+    const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+    const ninetyDaysAgoYMD = ninetyDaysAgo.split('T')[0];
+    memoryRooms.forEach((r) => {
+      if (Array.isArray(r.bookedRanges)) {
+        r.bookedRanges = r.bookedRanges.filter((b) => !b.checkOut || b.checkOut >= ninetyDaysAgoYMD);
+      }
+    });
     return res.json({ success: true, data: memoryRooms, source: 'memory' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -569,12 +614,24 @@ app.put('/api/rooms', async (req, res) => {
   }
 });
 
-// 3. POST /api/rooms (Add room)
+// 3. POST /api/rooms (Add room OR Reset inventory)
 app.post('/api/rooms', async (req, res) => {
   try {
+    if (req.body?.action === 'reset' || req.query?.action === 'reset') {
+      if (db) {
+        await db.collection('rooms').deleteMany({});
+        await db.collection('rooms').insertMany(INITIAL_ROOMS);
+        const docs = await db.collection('rooms').find({}).toArray();
+        const sanitized = docs.map(({ _id, ...rest }) => rest);
+        return res.json({ success: true, data: sanitized, source: 'mongodb' });
+      }
+      memoryRooms = INITIAL_ROOMS.map((r) => ({ ...r, activeBooking: null, bookedRanges: [] }));
+      return res.json({ success: true, data: memoryRooms, source: 'memory' });
+    }
+
     const newRoom = {
       ...req.body,
-      id: req.body.id || 'room-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+      id: req.body?.id || 'room-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
       updatedAt: new Date().toISOString()
     };
 

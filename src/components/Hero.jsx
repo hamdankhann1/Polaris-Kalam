@@ -49,57 +49,102 @@ export default function Hero({ onOpenInquiry, onOpenBooking }) {
   return (
     <section className="relative min-h-screen w-full max-w-full overflow-x-hidden flex flex-col items-center justify-center pt-24 sm:pt-28 pb-16 sm:pb-20 px-3 sm:px-6 text-center">
       {/* ------------------------------------------------------------- */}
-      {/* ARCHITECTURAL GEOGRAPHIC BADGE                                */}
+      {/* HERO SANCTUARY BACKGROUND RENDER (TOP SECTION ONLY)           */}
       {/* ------------------------------------------------------------- */}
-      <div className="inline-flex items-center justify-center space-x-1.5 sm:space-x-2 px-3 sm:px-4 py-1.5 mb-6 sm:mb-8 border border-stone-200/90 bg-white/90 shadow-xs backdrop-blur-md rounded-full max-w-[92vw]">
-        <MapPin className="w-3.5 h-3.5 text-[#B48A28] shrink-0" />
-        <span className="text-[11px] sm:text-xs md:text-sm font-mono tracking-wider text-stone-700 uppercase font-medium truncate">
-          <span className="hidden sm:inline">
-            {POLARIS_CONFIG.coordinates} •{" "}
+      {POLARIS_CONFIG.heroBackgroundImage && (
+        <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden">
+          {/* 4K Ultra High-Definition Architectural Render of Hotel & Alpine Swat Valley */}
+          <img
+            src={POLARIS_CONFIG.heroBackgroundImage}
+            alt="Polaris Kalam Hotel & Alpine Mountain Sanctuary"
+            className="w-full h-full object-cover object-center sm:object-[68%_center] md:object-center transform scale-[1.01]"
+          />
+
+          {/* Luminous Light Theme Luxury Translucent Wash */}
+          <div 
+            className="absolute inset-0 bg-[#FAF9F5]" 
+            style={{ opacity: POLARIS_CONFIG.heroBackgroundOverlayOpacity ?? 0.68 }}
+          />
+
+          {/* Depth-of-field luxury blur layer over high-definition image */}
+          <div className="absolute inset-0 backdrop-blur-[2px]" />
+
+          {/* Central radial focus: softer overlay in center for razor-sharp typography */}
+          <div 
+            className="absolute inset-0"
+            style={{
+              background: 'radial-gradient(ellipse at center, rgba(255,255,255,0.45) 0%, rgba(250,249,245,0.2) 55%, rgba(250,249,245,0.7) 100%)'
+            }}
+          />
+
+          {/* Top navigation transition fade */}
+          <div className="absolute inset-x-0 top-0 h-36 bg-gradient-to-b from-[#FAF9F5] via-[#FAF9F5]/70 to-transparent" />
+
+          {/* Bottom transition gradient into Vision Section */}
+          <div className="absolute inset-x-0 bottom-0 h-44 bg-gradient-to-t from-[#FAF9F5] via-[#FAF9F5]/85 to-transparent" />
+
+          {/* Ambient warm celestial aura */}
+          <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[720px] h-[720px] rounded-full bg-amber-300/15 blur-3xl pointer-events-none" />
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------- */}
+      {/* FOREGROUND CONTENT                                            */}
+      {/* ------------------------------------------------------------- */}
+      <div className="relative z-10 w-full max-w-full flex flex-col items-center justify-center">
+
+        {/* ------------------------------------------------------------- */}
+        {/* ARCHITECTURAL GEOGRAPHIC BADGE                                */}
+        {/* ------------------------------------------------------------- */}
+        <div className="inline-flex items-center justify-center space-x-1.5 sm:space-x-2 px-3 sm:px-4 py-1.5 mb-6 sm:mb-8 border border-stone-200/90 bg-white/90 shadow-xs backdrop-blur-md rounded-full max-w-[92vw]">
+          <MapPin className="w-3.5 h-3.5 text-[#B48A28] shrink-0" />
+          <span className="text-[11px] sm:text-xs md:text-sm font-mono tracking-wider text-stone-700 uppercase font-medium truncate">
+            <span className="hidden sm:inline">
+              {POLARIS_CONFIG.coordinates} •{" "}
+            </span>
+            {POLARIS_CONFIG.location}
           </span>
-          {POLARIS_CONFIG.location}
-        </span>
-      </div>
+        </div>
 
-      {/* ------------------------------------------------------------- */}
-      {/* AUTHENTIC BRAND EMBLEM                                        */}
-      {/* ------------------------------------------------------------- */}
-      <div className="relative mb-5 sm:mb-6 group cursor-default">
-        {/* Ambient star aura */}
-        <div className="absolute inset-0 bg-amber-400/20 blur-2xl rounded-full pointer-events-none transform scale-150 animate-pulse" />
-        <img
-          src={POLARIS_CONFIG.emblem}
-          alt="Polaris Hotels & Resorts Star"
-          className="relative w-16 h-16 sm:w-24 sm:h-24 md:w-28 md:h-28 object-contain mx-auto drop-shadow-[0_4px_20px_rgba(180,138,40,0.35)] transition-transform duration-700 group-hover:scale-105"
-        />
-      </div>
+        {/* ------------------------------------------------------------- */}
+        {/* AUTHENTIC BRAND EMBLEM                                        */}
+        {/* ------------------------------------------------------------- */}
+        <div className="relative mb-5 sm:mb-6 group cursor-default">
+          {/* Ambient star aura */}
+          <div className="absolute inset-0 bg-amber-400/20 blur-2xl rounded-full pointer-events-none transform scale-150 animate-pulse" />
+          <img
+            src={POLARIS_CONFIG.emblem}
+            alt="Polaris Hotels & Resorts Star"
+            className="relative w-16 h-16 sm:w-24 sm:h-24 md:w-28 md:h-28 object-contain mx-auto drop-shadow-[0_4px_20px_rgba(180,138,40,0.35)] transition-transform duration-700 group-hover:scale-105"
+          />
+        </div>
 
-      {/* ------------------------------------------------------------- */}
-      {/* MONUMENTAL BRAND TITLE                                        */}
-      {/* ------------------------------------------------------------- */}
-      <div className="relative mb-2 w-full max-w-full px-2">
-        {/* Subtle decorative glow behind brand name */}
-        <div className="absolute inset-0 bg-amber-200/25 blur-3xl rounded-full pointer-events-none" />
+        {/* ------------------------------------------------------------- */}
+        {/* MONUMENTAL BRAND TITLE                                        */}
+        {/* ------------------------------------------------------------- */}
+        <div className="relative mb-2 w-full max-w-full px-2">
+          {/* Subtle decorative glow behind brand name */}
+          <div className="absolute inset-0 bg-amber-200/25 blur-3xl rounded-full pointer-events-none" />
 
-        <h1 className="relative font-display text-3xl sm:text-6xl md:text-8xl lg:text-9xl tracking-[0.14em] sm:tracking-[0.22em] md:tracking-[0.25em] font-medium uppercase text-stone-900 break-words leading-tight">
-          {POLARIS_CONFIG.hotelName}
-        </h1>
-      </div>
+          <h1 className="relative font-display text-3xl sm:text-6xl md:text-8xl lg:text-9xl tracking-[0.14em] sm:tracking-[0.22em] md:tracking-[0.25em] font-medium uppercase text-stone-900 break-words leading-tight">
+            {POLARIS_CONFIG.hotelName}
+          </h1>
+        </div>
 
-      {/* Brand Subtitle Lockup (Matches Official Logo) */}
-      <p className="text-xs sm:text-sm md:text-base font-sans tracking-[0.16em] sm:tracking-[0.35em] md:tracking-[0.42em] uppercase text-[#B48A28] font-bold mb-2.5 sm:mb-3 px-2">
-        {POLARIS_CONFIG.brandSubtitle}
-      </p>
+        {/* Brand Subtitle Lockup (Matches Official Logo) */}
+        <p className="text-xs sm:text-sm md:text-base font-sans tracking-[0.16em] sm:tracking-[0.35em] md:tracking-[0.42em] uppercase text-[#B48A28] font-bold mb-2.5 sm:mb-3 px-2">
+          {POLARIS_CONFIG.brandSubtitle}
+        </p>
 
-      {/* Brand Tagline */}
-      <p className="text-xs sm:text-sm md:text-base font-sans tracking-wide sm:tracking-[0.24em] uppercase text-stone-600 mb-5 sm:mb-6 font-semibold px-2">
-        {POLARIS_CONFIG.tagline}
-      </p>
+        {/* Brand Tagline */}
+        <p className="text-xs sm:text-sm md:text-base font-sans tracking-wide sm:tracking-[0.24em] uppercase text-stone-600 mb-5 sm:mb-6 font-semibold px-2">
+          {POLARIS_CONFIG.tagline}
+        </p>
 
-      {/* Narrative Subtitle */}
-      <p className="max-w-2xl text-stone-700 text-sm sm:text-base md:text-lg leading-relaxed font-normal mb-8 sm:mb-10 px-2 sm:px-4">
-        {POLARIS_CONFIG.mission.description}
-      </p>
+        {/* Narrative Subtitle */}
+        <p className="max-w-2xl text-stone-700 text-sm sm:text-base md:text-lg leading-relaxed font-normal mb-8 sm:mb-10 px-2 sm:px-4">
+          {POLARIS_CONFIG.mission.description}
+        </p>
 
       {/* ------------------------------------------------------------- */}
       {/* "BOOKING WILL BE OPEN SOON" PROMINENT LUXURY ANNOUNCEMENT     */}
@@ -198,6 +243,8 @@ export default function Hero({ onOpenInquiry, onOpenBooking }) {
           Discover The Vision
         </span>
         <ArrowDown className="w-4 h-4 text-stone-600 animate-bounce" />
+      </div>
+
       </div>
     </section>
   );
