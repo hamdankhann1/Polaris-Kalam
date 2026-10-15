@@ -218,12 +218,27 @@ export function getMongoConfig() {
     { name: 'VITE_MONGO_URI', val: process.env.VITE_MONGO_URI }
   ];
 
+function sanitizeMongoUri(rawUri) {
+  if (!rawUri || typeof rawUri !== 'string') return null;
+  const uriMatch = rawUri.trim().match(/(mongodb(?:\+srv)?:\/\/[^\s"']+)/);
+  let uri = uriMatch ? uriMatch[1] : rawUri.trim().replace(/^["']|["']$/g, '');
+
+  // Strip accidental template angle brackets e.g. <username>:<password>
+  uri = uri.replace(/^(mongodb(?:\+srv)?:\/\/)([^@]+)@/i, (match, proto, creds) => {
+    const colonIdx = creds.indexOf(':');
+    if (colonIdx === -1) return match;
+    let user = creds.slice(0, colonIdx).replace(/^<|>$/g, '');
+    let pass = creds.slice(colonIdx + 1).replace(/^<|>$/g, '');
+    return `${proto}${user}:${pass}@`;
+  });
+
+  return uri;
+}
+
   // 1. Check known candidate keys
   for (const c of candidates) {
     if (c.val && typeof c.val === 'string' && c.val.trim().length > 0) {
-      let raw = c.val.trim();
-      const uriMatch = raw.match(/(mongodb(?:\+srv)?:\/\/[^\s"']+)/);
-      const cleanUri = uriMatch ? uriMatch[1] : raw.replace(/^["']|["']$/g, '');
+      const cleanUri = sanitizeMongoUri(c.val);
       return { uri: cleanUri, keyName: c.name, hasEnv: true };
     }
   }
@@ -231,9 +246,9 @@ export function getMongoConfig() {
   // 2. Scan entire process.env for any variable containing a mongodb connection string
   for (const [key, val] of Object.entries(process.env)) {
     if (typeof val === 'string' && (val.includes('mongodb+srv://') || val.includes('mongodb://'))) {
-      const uriMatch = val.match(/(mongodb(?:\+srv)?:\/\/[^\s"']+)/);
-      if (uriMatch) {
-        return { uri: uriMatch[1], keyName: key, hasEnv: true };
+      const cleanUri = sanitizeMongoUri(val);
+      if (cleanUri) {
+        return { uri: cleanUri, keyName: key, hasEnv: true };
       }
     }
   }
@@ -273,7 +288,8 @@ async function getDatabase() {
       maxPoolSize: 10,
       serverSelectionTimeoutMS: 5000,
       connectTimeoutMS: 5000,
-      socketTimeoutMS: 10000
+      socketTimeoutMS: 10000,
+      authSource: 'admin'
     });
     await client.connect();
     const db = client.db(process.env.MONGODB_DB_NAME || 'polaris_hotel');
