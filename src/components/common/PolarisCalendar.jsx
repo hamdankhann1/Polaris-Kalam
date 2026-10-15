@@ -5,7 +5,7 @@ import {
   Calendar as CalendarIcon, 
   CheckCircle2, 
   AlertCircle, 
-  RotateCcw, 
+  X, 
   Sparkles,
   Lock,
   Moon
@@ -311,8 +311,8 @@ export default function PolarisCalendar({
             onClick={handleResetDates}
             className="self-start sm:self-auto px-3.5 py-1.5 rounded-lg text-xs font-mono uppercase tracking-wider text-stone-600 hover:text-stone-900 hover:bg-stone-100 border border-stone-300 font-semibold transition-colors flex items-center space-x-1.5 shrink-0"
           >
-            <RotateCcw className="w-3.5 h-3.5 shrink-0" />
-            <span>Reset Dates</span>
+            <X className="w-3.5 h-3.5 shrink-0" />
+            <span>Clear Dates</span>
           </button>
         )}
       </div>

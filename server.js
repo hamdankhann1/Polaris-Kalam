@@ -129,7 +129,7 @@ const INITIAL_ROOMS = [
     floor: 'Floor 3',
     capacity: '3 Guests • 1 King + 1 Daybed',
     pricePKR: 68000,
-    status: 'booked',
+    status: 'available',
     amenities: [
       'Private Stargazing Balcony',
       'Stone Hearth Fireplace',
@@ -220,7 +220,7 @@ const INITIAL_ROOMS = [
     floor: 'Floor 2',
     capacity: '4 Guests • 2 Queen Beds',
     pricePKR: 46000,
-    status: 'booked',
+    status: 'available',
     amenities: [
       'River & Ridge Vistas',
       'Twin Vanities',

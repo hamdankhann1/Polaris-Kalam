@@ -11,14 +11,14 @@ import PolarisCalendar from '../common/PolarisCalendar';
  * Allows staff to quickly select any room and block it / record an incoming booking
  * from the other CMS, phone reservation, or walk-in.
  */
-export default function NewBookingModal({ isOpen, onClose, rooms, onSaveBooking, bookingRequests = [] }) {
+export default function NewBookingModal({ isOpen, onClose, rooms, onSaveBooking, bookingRequests = [], initialRoomId = null }) {
   if (!isOpen) return null;
 
   const today = new Date().toISOString().split('T')[0];
   const defaultStart = today;
   const defaultEnd = new Date(new Date(defaultStart + 'T00:00:00').getTime() + 86400000 * 3).toISOString().split('T')[0];
 
-  const [selectedRoomId, setSelectedRoomId] = useState(rooms[0]?.id || '');
+  const [selectedRoomId, setSelectedRoomId] = useState(initialRoomId || rooms[0]?.id || '');
   const [guestName, setGuestName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
@@ -28,6 +28,14 @@ export default function NewBookingModal({ isOpen, onClose, rooms, onSaveBooking,
   const [queueStatus, setQueueStatus] = useState('pending'); // 'pending' increments the red notification badge!
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  React.useEffect(() => {
+    if (initialRoomId) {
+      setSelectedRoomId(initialRoomId);
+    } else if (rooms.length > 0 && !selectedRoomId) {
+      setSelectedRoomId(rooms[0].id);
+    }
+  }, [initialRoomId, isOpen, rooms]);
 
   const selectedRoom = rooms.find((r) => r.id === selectedRoomId);
 
@@ -74,13 +82,13 @@ export default function NewBookingModal({ isOpen, onClose, rooms, onSaveBooking,
         <div className="flex items-start justify-between pb-5 border-b border-stone-200">
           <div className="space-y-1">
             <span className="text-[11px] font-mono uppercase tracking-widest text-rose-700 font-semibold">
-              OPERATIONAL SYNC & RESERVATION BLOCK
+              DATE AVAILABILITY & RESERVATION BLOCK
             </span>
             <h3 className="font-display text-xl text-stone-900 font-medium tracking-wide">
-              Record External Booking
+              Lock Specific Dates
             </h3>
             <p className="text-xs text-stone-500 font-light">
-              Manually lock a room received from your other hotel CMS, phone call, or walk-in.
+              Make this suite unavailable for the chosen date period only. All other dates continue to be open for booking.
             </p>
           </div>
 
@@ -269,7 +277,7 @@ export default function NewBookingModal({ isOpen, onClose, rooms, onSaveBooking,
               disabled={isSubmitting}
               className="px-5 py-2.5 rounded-lg text-xs font-mono uppercase tracking-wider bg-rose-600 hover:bg-rose-500 text-white font-medium transition-all flex items-center space-x-2 shadow-md shadow-rose-900/10"
             >
-              <span>{isSubmitting ? 'Blocking Room...' : 'Lock Room & Save Booking'}</span>
+              <span>{isSubmitting ? 'Locking Dates...' : 'Confirm & Lock Dates'}</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>

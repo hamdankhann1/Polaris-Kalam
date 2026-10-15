@@ -7,7 +7,6 @@ import {
   Search, 
   Filter, 
   Plus, 
-  RotateCcw, 
   ArrowLeft, 
   ShieldCheck, 
   Lock, 
@@ -189,62 +188,106 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
     }, 4500);
   };
 
-  // --- STATUS CHANGE HANDLERS ---
+  // --- STATUS & DATE BLOCK HANDLERS ---
   const handleInitiateStatusChange = (room, status) => {
-    if (room.status === status) return;
     setActiveRoomForStatus(room);
     setTargetStatus(status);
     setStatusModalOpen(true);
   };
 
-  const handleConfirmStatus = async (roomId, newStatus, meta) => {
+  const handleOpenLockDates = (room) => {
+    setActiveRoomForStatus(room);
+    setNewBookingModalOpen(true);
+  };
+
+  const handleQuickToggleStatus = async (room, nextStatus) => {
     try {
-      const updatedRoom = await RoomService.updateStatus(roomId, newStatus, meta);
-      const labels = {
-        available: 'AVAILABLE (Open for guest booking)',
-        booked: 'BOOKED (Blocked on website)',
-        'in cleaning': 'IN CLEANING (Housekeeping notified)'
-      };
+      await RoomService.updateStatus(room.id, nextStatus, {
+        assignedTo: 'Turnover Duty Team',
+        priority: 'Standard Departure Turnover',
+        inspectedBy: 'Duty Supervisor'
+      });
+      const freshRooms = await RoomService.getRooms();
+      setRooms(freshRooms);
+      triggerToast(
+        nextStatus === 'in cleaning'
+          ? `Room #${room.roomNumber} set to IN TURNOVER / CLEANING.`
+          : `Room #${room.roomNumber} set to READY & AVAILABLE for guests.`
+      );
+    } catch (err) {
+      console.error('Error changing status:', err);
+      triggerToast('Error updating status: ' + err.message);
+    }
+  };
 
-      // If a booking is recorded with guest details (e.g. from NewBookingModal),
-      // synchronize it into the Booking Requests queue and update the red notification badge!
-      if (newStatus === 'booked' && meta && meta.guestName) {
-        const targetRoom = rooms.find((r) => r.id === roomId) || updatedRoom;
-        const qStatus = meta.queueStatus || 'pending';
+  const handleConfirmStatus = async (roomId, newStatus, meta = {}) => {
+    try {
+      const targetRoom = rooms.find((r) => r.id === roomId);
+      const roomNum = targetRoom?.roomNumber || roomId;
 
-        await BookingRequestService.createRequest({
-          guestName: meta.guestName,
-          phone: meta.phone || '+92 300 0000000',
-          email: meta.email || 'concierge@polarishotel.pk',
-          roomId: targetRoom.id,
-          roomNumber: targetRoom.roomNumber,
-          roomName: targetRoom.name,
-          tier: targetRoom.tier,
-          floor: targetRoom.floor,
-          pricePKR: targetRoom.pricePKR,
+      // If 'booked' or dates are provided, lock only those specific dates!
+      if (newStatus === 'booked' || (meta.checkIn && meta.checkOut)) {
+        await RoomService.addBookedRange(roomId, {
           checkIn: meta.checkIn,
           checkOut: meta.checkOut,
-          guests: meta.guests || '2 Guests',
-          notes: meta.notes ? `${meta.notes} [Source: ${meta.source || 'CMS'}]` : `Source: ${meta.source || 'CMS'}`,
-          status: qStatus
+          guestName: meta.guestName || 'VIP Guest',
+          source: meta.source || 'Staff CMS Date Block',
+          notes: meta.notes || ''
         });
 
-        // Immediately update state
-        const freshRequests = await BookingRequestService.getRequests();
-        setBookingRequests(freshRequests);
+        // If guest details are provided, synchronize into inquiries queue
+        if (meta.guestName && targetRoom) {
+          const qStatus = meta.queueStatus || 'pending';
+          await BookingRequestService.createRequest({
+            guestName: meta.guestName,
+            phone: meta.phone || '+92 300 0000000',
+            email: meta.email || 'concierge@polarishotel.pk',
+            roomId: targetRoom.id,
+            roomNumber: targetRoom.roomNumber,
+            roomName: targetRoom.name,
+            tier: targetRoom.tier,
+            floor: targetRoom.floor,
+            pricePKR: targetRoom.pricePKR,
+            checkIn: meta.checkIn,
+            checkOut: meta.checkOut,
+            guests: meta.guests || '2 Guests',
+            notes: meta.notes ? `${meta.notes} [Source: ${meta.source || 'CMS'}]` : `Source: ${meta.source || 'CMS'}`,
+            status: qStatus
+          });
+          const freshRequests = await BookingRequestService.getRequests();
+          setBookingRequests(freshRequests);
+        }
 
-        const newPending = freshRequests.filter((r) => r.status === 'pending').length;
-        triggerToast(
-          qStatus === 'pending'
-            ? `Room #${updatedRoom.roomNumber} set to BOOKED. Request logged to inquiries queue (Badge updated: ${newPending} Pending).`
-            : `Room #${updatedRoom.roomNumber} status set to BOOKED.`
-        );
+        const freshRooms = await RoomService.getRooms();
+        setRooms(freshRooms);
+
+        triggerToast(`Dates (${meta.checkIn} → ${meta.checkOut}) locked for Room #${roomNum}. Suite remains open for all other dates.`);
       } else {
-        triggerToast(`Room #${updatedRoom.roomNumber} status set to ${labels[newStatus] || newStatus}.`);
+        await RoomService.updateStatus(roomId, newStatus, meta);
+        const freshRooms = await RoomService.getRooms();
+        setRooms(freshRooms);
+
+        triggerToast(
+          newStatus === 'in cleaning'
+            ? `Room #${roomNum} moved to IN CLEANING / TURNOVER.`
+            : `Room #${roomNum} marked READY & AVAILABLE.`
+        );
       }
     } catch (err) {
       console.error(err);
       triggerToast('Error updating status: ' + err.message);
+    }
+  };
+
+  const handleRemoveBookedRange = async (roomId, rangeId) => {
+    try {
+      await RoomService.removeBookedRange(roomId, rangeId);
+      const freshRooms = await RoomService.getRooms();
+      setRooms(freshRooms);
+      triggerToast('Date lock removed! Those dates are now open for booking on the website.');
+    } catch (err) {
+      console.error('Error removing date lock:', err);
+      triggerToast('Error removing date lock: ' + err.message);
     }
   };
 
@@ -297,7 +340,7 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
       const created = await BookingRequestService.createRequest(reqData);
 
       if (reqData.status === 'approved') {
-        await RoomService.updateStatus(reqData.roomId, 'booked', {
+        await RoomService.addBookedRange(reqData.roomId, {
           guestName: reqData.guestName,
           checkIn: reqData.checkIn,
           checkOut: reqData.checkOut,
@@ -317,7 +360,7 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
       triggerToast(
         reqData.status === 'pending'
           ? `New reservation inquiry for ${reqData.guestName} added to Pending queue. (Badge updated: ${pendingCount} Pending)`
-          : `Reservation for ${reqData.guestName} confirmed & Room #${reqData.roomNumber} locked as BOOKED.`
+          : `Reservation for ${reqData.guestName} confirmed & dates (${reqData.checkIn} to ${reqData.checkOut}) locked on Room #${reqData.roomNumber}.`
       );
     } catch (err) {
       console.error('Error creating booking request:', err);
@@ -327,8 +370,8 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
 
   const handleApproveBookingRequest = async (request) => {
     try {
-      // 1. Lock the room as 'booked'
-      await RoomService.updateStatus(request.roomId, 'booked', {
+      // 1. Lock only the reserved dates on the calendar
+      await RoomService.addBookedRange(request.roomId, {
         guestName: request.guestName,
         checkIn: request.checkIn,
         checkOut: request.checkOut,
@@ -337,7 +380,7 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
       });
 
       // 2. Update request status to 'approved'
-      await BookingRequestService.updateStatus(request.id, 'approved', 'Approved by Front Desk & Room Locked on Website');
+      await BookingRequestService.updateStatus(request.id, 'approved', 'Approved by Front Desk & Dates Locked on Website Calendar');
 
       // Refresh to guarantee state is fresh
       const [freshRooms, freshRequests] = await Promise.all([
@@ -347,7 +390,7 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
       setRooms(freshRooms);
       setBookingRequests(freshRequests);
 
-      triggerToast(`Reservation Approved! Room #${request.roomNumber} is now locked as BOOKED on the website.`);
+      triggerToast(`Reservation Approved! Dates ${request.checkIn} to ${request.checkOut} locked on calendar for Room #${request.roomNumber}. Suite remains available for other dates.`);
     } catch (err) {
       console.error('Error approving booking request:', err);
       triggerToast('Error approving request: ' + err.message);
@@ -379,31 +422,17 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
     }
   };
 
-  // Reset demo requests
-  const handleResetInquiries = async () => {
-    if (window.confirm('Reset booking inquiries queue back to initial demo requests?')) {
-      await BookingRequestService.resetToDefaults();
-      const freshRequests = await BookingRequestService.getRequests();
-      setBookingRequests(freshRequests);
-      triggerToast('Booking inquiries reset to initial 2 demo requests (Badge: 2).');
-    }
-  };
-
-  // Reset to defaults
-  const handleResetDefaults = async () => {
-    if (window.confirm('Reset all rooms back to the default 4-floor + Top Suite setup?')) {
-      await RoomService.resetToDefaults();
-      triggerToast('All rooms reset to default Polaris Kalam 4-floor configuration.');
-    }
-  };
-
   // Stats calculation
   const stats = RoomService.calculateStats(rooms);
   const pendingRequestsCount = bookingRequests.filter((r) => r.status === 'pending').length;
 
   // Filtered rooms
   const filteredRooms = rooms.filter((room) => {
-    if (selectedStatusFilter !== 'all' && room.status !== selectedStatusFilter) {
+    if (selectedStatusFilter === 'booked' || selectedStatusFilter === 'has_blocks') {
+      if (!Array.isArray(room.bookedRanges) || room.bookedRanges.length === 0) {
+        return false;
+      }
+    } else if (selectedStatusFilter !== 'all' && room.status !== selectedStatusFilter) {
       return false;
     }
     if (selectedFloorFilter !== 'all' && room.floor !== selectedFloorFilter) {
@@ -469,24 +498,15 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
             </div>
 
             {/* Current Status Pill */}
-            {isAvailable && (
-              <span className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-[10.5px] font-mono uppercase tracking-wider bg-emerald-50 border border-emerald-200 text-emerald-800 font-medium">
+            {isCleaning ? (
+              <span className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-[10.5px] font-mono uppercase tracking-wider bg-amber-50 border border-amber-300 text-amber-900 font-bold">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                <span>IN TURNOVER</span>
+              </span>
+            ) : (
+              <span className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-[10.5px] font-mono uppercase tracking-wider bg-emerald-50 border border-emerald-300 text-emerald-800 font-bold">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                 <span>AVAILABLE</span>
-              </span>
-            )}
-
-            {isBooked && (
-              <span className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-[10.5px] font-mono uppercase tracking-wider bg-rose-50 border border-rose-200 text-rose-800 font-medium">
-                <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
-                <span>BOOKED</span>
-              </span>
-            )}
-
-            {isCleaning && (
-              <span className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-[10.5px] font-mono uppercase tracking-wider bg-amber-50 border border-amber-200 text-amber-800 font-medium">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-                <span>IN CLEANING</span>
               </span>
             )}
           </div>
@@ -513,52 +533,32 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
             </div>
           </div>
 
-          <div className="mt-4 pt-3 border-t border-stone-100">
-            {isBooked && room.activeBooking && (
-              <div className="p-3 rounded-lg bg-rose-50/70 border border-rose-200/80 space-y-1.5 text-xs">
+          <div className="mt-4 pt-3 border-t border-stone-100 space-y-3">
+            {/* Turnover Notice if Cleaning */}
+            {isCleaning && (
+              <div className="p-3 rounded-lg bg-amber-50/80 border border-amber-200/90 space-y-1.5 text-xs">
                 <div className="flex items-center justify-between">
-                  <span className="text-stone-500 text-[11px]">Guest:</span>
-                  <span className="text-stone-900 font-medium truncate max-w-[170px]">
-                    {room.activeBooking.guestName}
+                  <span className="text-stone-500 text-[11px] font-mono">Housekeeping Turnover:</span>
+                  <span className="text-amber-900 font-medium truncate max-w-[160px]">
+                    {room.cleaningInfo?.assignedTo || 'Staff Duty Team'}
                   </span>
                 </div>
-                <div className="flex items-center justify-between text-[11px]">
-                  <span className="text-stone-500">Dates:</span>
-                  <span className="text-rose-700 font-mono font-medium">
-                    {room.activeBooking.checkIn} → {room.activeBooking.checkOut}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-[10px] text-stone-500 pt-1 border-t border-rose-100">
-                  <span className="truncate max-w-[150px]">Src: {room.activeBooking.source}</span>
-                  <span className="text-rose-700 uppercase font-mono font-bold">Site Locked</span>
-                </div>
-              </div>
-            )}
-
-            {isCleaning && room.cleaningInfo && (
-              <div className="p-3 rounded-lg bg-amber-50/70 border border-amber-200/80 space-y-1.5 text-xs">
-                <div className="flex items-center justify-between">
-                  <span className="text-stone-500 text-[11px]">Housekeeping:</span>
-                  <span className="text-stone-900 font-medium truncate max-w-[170px]">
-                    {room.cleaningInfo.assignedTo}
-                  </span>
-                </div>
-                <div className="text-[11px] text-amber-800 truncate">
-                  {room.cleaningInfo.priority}
+                <div className="text-[11px] text-amber-800">
+                  {room.cleaningInfo?.priority || 'Turnover in progress'}
                 </div>
                 <button
-                  onClick={() => handleConfirmStatus(room.id, 'available', { inspectedBy: 'Quick Turnover Pass' })}
-                  className="w-full mt-1.5 py-1.5 rounded bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 text-[10.5px] font-mono uppercase tracking-wider transition-colors flex items-center justify-center space-x-1 font-medium"
+                  onClick={() => handleQuickToggleStatus(room, 'available')}
+                  className="w-full mt-1.5 py-1.5 rounded bg-white hover:bg-emerald-50 border border-emerald-300 text-emerald-800 text-[10.5px] font-mono uppercase tracking-wider transition-colors flex items-center justify-center space-x-1 font-bold shadow-2xs"
                 >
-                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                  <span>Mark Cleaned & Available</span>
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Mark Ready & Available</span>
                 </button>
               </div>
             )}
 
             {/* PENDING RESERVATION INQUIRY WAITING ON THIS ROOM */}
             {hasPendingInquiry && (
-              <div className="p-3 rounded-lg bg-amber-50 border border-amber-300 space-y-2 text-xs mb-2 shadow-2xs">
+              <div className="p-3 rounded-lg bg-amber-50 border border-amber-300 space-y-2 text-xs shadow-2xs">
                 <div className="flex items-center justify-between">
                   <span className="text-amber-950 font-bold flex items-center space-x-1.5 text-[11px] font-mono uppercase tracking-wider">
                     <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
@@ -590,63 +590,102 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
               </div>
             )}
 
-            {isAvailable && (
-              <div className="p-3 rounded-lg bg-emerald-50/70 border border-emerald-200/80 text-xs space-y-1">
-                <div className="flex items-center space-x-1.5 text-emerald-800 text-[11px] font-medium">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                  <span>Room Sanitized & Inspected</span>
-                </div>
-                <p className="text-[10.5px] text-stone-600 leading-tight">
-                  Available on public website for direct booking requests.
-                </p>
+            {/* LOCKED DATE PERIODS FOR THIS ROOM */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-[11px] font-mono uppercase tracking-wider text-stone-600 font-semibold">
+                <span className="flex items-center space-x-1">
+                  <Calendar className="w-3.5 h-3.5 text-rose-600" />
+                  <span>Locked Dates ({room.bookedRanges?.length || 0})</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleOpenLockDates(room)}
+                  className="text-[10.5px] font-mono text-[#B48A28] hover:text-[#8A661C] font-bold flex items-center space-x-0.5 hover:underline"
+                >
+                  <Plus className="w-3 h-3" />
+                  <span>Lock Dates</span>
+                </button>
               </div>
-            )}
+
+              {Array.isArray(room.bookedRanges) && room.bookedRanges.length > 0 ? (
+                <div className="space-y-1.5 max-h-36 overflow-y-auto pr-0.5">
+                  {room.bookedRanges.map((range) => (
+                    <div
+                      key={range.id || `${range.checkIn}-${range.checkOut}`}
+                      className="p-2 rounded-lg bg-rose-50/90 border border-rose-200 text-xs flex items-center justify-between gap-2 shadow-2xs"
+                    >
+                      <div className="truncate min-w-0 flex-1">
+                        <div className="font-mono text-rose-800 font-bold text-[11px] truncate">
+                          {range.checkIn} → {range.checkOut}
+                        </div>
+                        <div className="text-[10px] text-stone-600 truncate mt-0.5">
+                          {range.guestName || 'Blocked Dates'} • {range.source || 'Direct'}
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveBookedRange(room.id, range.id)}
+                        className="px-2 py-1 rounded text-[10px] font-mono font-semibold text-rose-700 hover:text-white hover:bg-rose-600 border border-rose-300 transition-colors shrink-0"
+                        title="Unlock these dates"
+                      >
+                        Unlock
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-2 rounded-lg bg-emerald-50/60 border border-emerald-200 text-[11px] font-mono text-emerald-800 flex items-center justify-between">
+                  <span>All dates open for booking</span>
+                  <span className="text-[10px] text-emerald-600 font-semibold">Dec 1+</span>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* 3-OPTION SEGMENTED BUTTONS */}
+        {/* OPERATIONAL STATUS & ACTIONS */}
         <div className="p-4 bg-stone-50/80 border-t border-stone-100 space-y-2.5">
-          <div className="text-[9.5px] font-mono uppercase tracking-widest text-stone-500 font-medium">
-            Update Room Status:
+          <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-widest text-stone-500 font-semibold">
+            <span>Operational Turnover:</span>
+            <span className="text-stone-400 font-normal">
+              {isCleaning ? 'Turnover in progress' : 'Ready for arrivals'}
+            </span>
           </div>
 
-          <div className="grid grid-cols-3 gap-1.5">
+          <div className="grid grid-cols-2 gap-2">
             <button
-              onClick={() => handleInitiateStatusChange(room, 'available')}
-              disabled={isAvailable}
-              className={`py-2 px-1 rounded text-[11px] font-mono uppercase tracking-wider transition-all border text-center ${
+              onClick={() => handleQuickToggleStatus(room, 'available')}
+              className={`py-2 px-2 rounded-lg text-xs font-mono uppercase tracking-wider transition-all border text-center flex items-center justify-center space-x-1.5 ${
                 isAvailable
                   ? 'bg-emerald-600 text-white font-bold border-emerald-600 shadow-xs cursor-default'
-                  : 'bg-white text-stone-700 border-stone-200 hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800'
+                  : 'bg-white text-stone-700 border-stone-200 hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800 font-medium'
               }`}
             >
-              ✓ Available
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              <span>Ready & Clean</span>
             </button>
 
             <button
-              onClick={() => handleInitiateStatusChange(room, 'booked')}
-              disabled={isBooked}
-              className={`py-2 px-1 rounded text-[11px] font-mono uppercase tracking-wider transition-all border text-center ${
-                isBooked
-                  ? 'bg-rose-600 text-white font-bold border-rose-600 shadow-xs cursor-default'
-                  : 'bg-white text-stone-700 border-stone-200 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-800'
-              }`}
-            >
-              ✕ Booked
-            </button>
-
-            <button
-              onClick={() => handleInitiateStatusChange(room, 'in cleaning')}
-              disabled={isCleaning}
-              className={`py-2 px-1 rounded text-[11px] font-mono uppercase tracking-wider transition-all border text-center ${
+              onClick={() => handleQuickToggleStatus(room, 'in cleaning')}
+              className={`py-2 px-2 rounded-lg text-xs font-mono uppercase tracking-wider transition-all border text-center flex items-center justify-center space-x-1.5 ${
                 isCleaning
                   ? 'bg-amber-500 text-white font-bold border-amber-500 shadow-xs cursor-default'
-                  : 'bg-white text-stone-700 border-stone-200 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-800'
+                  : 'bg-white text-stone-700 border-stone-200 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-800 font-medium'
               }`}
             >
-              🧹 Cleaning
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>In Turnover</span>
             </button>
           </div>
+
+          <button
+            onClick={() => handleOpenLockDates(room)}
+            className="w-full py-2 px-3 rounded-lg bg-rose-50 hover:bg-rose-100/90 border border-rose-300 text-rose-800 text-xs font-mono uppercase tracking-wider font-bold transition-all flex items-center justify-center space-x-1.5 shadow-2xs"
+          >
+            <Lock className="w-3.5 h-3.5 text-rose-600" />
+            <span>+ Lock Specific Dates</span>
+          </button>
 
           <div className="flex items-center justify-between pt-2 border-t border-stone-200">
             <div className="flex items-center space-x-2">
@@ -655,7 +694,7 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
                 className="text-[10px] font-mono uppercase tracking-wider text-stone-500 hover:text-[#B48A28] flex items-center space-x-1 transition-colors"
               >
                 <Edit3 className="w-3 h-3" />
-                <span>Edit</span>
+                <span>Edit Specs</span>
               </button>
 
               <span className="text-stone-300">•</span>
@@ -833,7 +872,7 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
                   )}
                 </h1>
                 <p className="text-xs text-stone-500 font-light mt-1">
-                  Submitted from <strong>polarishotels.pk/booking</strong>. Review inquiries, chat with guests directly on WhatsApp, and approve reservations to automatically lock the room.
+                  Submitted from <strong>polarishotels.pk/booking</strong>. Review inquiries, chat with guests directly on WhatsApp, and approve reservations to lock calendar dates.
                 </p>
               </div>
 
@@ -844,15 +883,6 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
                 >
                   <Plus className="w-4 h-4" />
                   <span>+ New Booking Request</span>
-                </button>
-
-                <button
-                  onClick={handleResetInquiries}
-                  className="p-2.5 rounded-lg border border-stone-300 hover:border-stone-400 text-stone-600 hover:text-stone-900 hover:bg-stone-100 transition-colors"
-                  title="Reset booking requests to initial demo items"
-                  aria-label="Reset requests"
-                >
-                  <RotateCcw className="w-4 h-4" />
                 </button>
 
                 <button
@@ -985,14 +1015,14 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
                             <ExternalLink className="w-3 h-3 ml-0.5 opacity-80" />
                           </a>
 
-                          {/* 2. APPROVE & LOCK ROOM */}
+                          {/* 2. APPROVE & LOCK DATES */}
                           {!isApproved && (
                             <button
                               onClick={() => handleApproveBookingRequest(req)}
                               className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-mono uppercase tracking-wider font-bold transition-all flex items-center space-x-2 shadow-sm"
                             >
                               <CheckCircle2 className="w-4 h-4" />
-                              <span>Approve & Lock Room</span>
+                              <span>Approve & Lock Dates</span>
                             </button>
                           )}
 
@@ -1045,7 +1075,7 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
                 </h1>
                 <p className="text-xs text-stone-600 font-light mt-1 max-w-2xl">
                   Manage inventory across <strong>Floor 1</strong>, <strong>Floor 2</strong>, <strong>Floor 3</strong>, <strong>Floor 4</strong>, and the <strong>Top Penthouse Suite</strong>. 
-                  Add or remove rooms, adjust nightly prices, and update status between <span className="text-emerald-700 font-mono font-semibold">Available</span>, <span className="text-rose-700 font-mono font-semibold">Booked</span>, and <span className="text-amber-700 font-mono font-semibold">In Cleaning</span>.
+                  Adjust nightly prices, toggle operational turnover, and lock specific dates for reservations or maintenance.
                 </p>
               </div>
 
@@ -1063,17 +1093,8 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
                   onClick={() => setNewBookingModalOpen(true)}
                   className="px-4 py-2.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-mono uppercase tracking-wider font-semibold transition-all flex items-center space-x-2 shadow-sm"
                 >
-                  <Plus className="w-4 h-4" />
-                  <span>Record Booking</span>
-                </button>
-
-                <button
-                  onClick={handleResetDefaults}
-                  className="p-2.5 rounded-lg border border-stone-300 hover:border-stone-400 text-stone-600 hover:text-stone-900 hover:bg-stone-100 transition-colors"
-                  title="Reset to 4 Floors + Top Suite Default"
-                  aria-label="Reset demo data"
-                >
-                  <RotateCcw className="w-4 h-4" />
+                  <Lock className="w-4 h-4" />
+                  <span>+ Lock Dates / Record Booking</span>
                 </button>
               </div>
             </div>
@@ -1095,7 +1116,7 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
                       </span>
                     </div>
                     <p className="text-xs sm:text-sm text-stone-700 mt-0.5 font-normal">
-                      New reservation requests have been submitted. Review details, chat with guests directly on WhatsApp, and click "Approve" to lock rooms.
+                      New reservation requests have been submitted. Review details, chat with guests directly on WhatsApp, and click "Approve & Lock Dates" to lock calendar dates.
                     </p>
                   </div>
                 </div>
@@ -1159,7 +1180,7 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
                 }`}
               >
                 <div className="flex items-center justify-between text-rose-800 text-xs font-mono">
-                  <span className="uppercase tracking-wider">Booked / Blocked</span>
+                  <span className="uppercase tracking-wider">Has Locked Dates</span>
                   <span className="w-2 h-2 rounded-full bg-rose-500" />
                 </div>
                 <div className="mt-3 flex items-baseline space-x-2">
@@ -1167,12 +1188,12 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
                     {stats.booked}
                   </span>
                   <span className="text-xs font-mono text-rose-700">
-                    ({stats.occupancyRate}% Occupancy)
+                    Suites with Blocks
                   </span>
                 </div>
                 <div className="mt-2 text-[11px] text-stone-600 font-light flex items-center space-x-1">
-                  <XCircle className="w-3 h-3 text-rose-600 shrink-0" />
-                  <span>Blocked from Website</span>
+                  <Calendar className="w-3 h-3 text-rose-600 shrink-0" />
+                  <span>Reserved on Calendar</span>
                 </div>
               </div>
 
@@ -1291,7 +1312,7 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
                   }`}
                 >
                   <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
-                  <span>Booked ({stats.booked})</span>
+                  <span>Has Locked Dates ({stats.booked})</span>
                 </button>
 
                 <button
@@ -1469,8 +1490,12 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
       {/* 5. New Booking / Block Modal */}
       <NewBookingModal
         isOpen={newBookingModalOpen}
-        onClose={() => setNewBookingModalOpen(false)}
+        onClose={() => {
+          setNewBookingModalOpen(false);
+          setActiveRoomForStatus(null);
+        }}
         rooms={rooms}
+        initialRoomId={activeRoomForStatus?.id}
         bookingRequests={bookingRequests}
         onSaveBooking={handleConfirmStatus}
       />
@@ -1486,6 +1511,7 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
         bookingRequests={bookingRequests}
         onApproveRequest={handleApproveBookingRequest}
         onTriggerStatusChange={handleInitiateStatusChange}
+        onRemoveBookedRange={handleRemoveBookedRange}
       />
 
       {/* 7. Add Booking Request Modal (Manual Inquiries) */}

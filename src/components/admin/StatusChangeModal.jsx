@@ -102,8 +102,8 @@ export default function StatusChangeModal({ isOpen, onClose, room, targetStatus,
       accentColor: 'border-emerald-300'
     },
     booked: {
-      title: 'Record Booking / Mark Booked',
-      subtitle: 'Blocks this room on the website immediately to prevent double-booking.',
+      title: 'Lock Specific Dates / Record Booking',
+      subtitle: 'Locks this suite on the calendar for the selected dates only. The room continues to be open for all other dates.',
       badgeBg: 'bg-rose-50 text-rose-800 border-rose-300 font-semibold',
       actionBtn: 'bg-rose-600 hover:bg-rose-500 text-white font-semibold shadow-xs',
       accentColor: 'border-rose-300'

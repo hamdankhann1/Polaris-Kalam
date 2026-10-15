@@ -16,7 +16,8 @@ export default function RoomDetailsModal({
   room, 
   onTriggerStatusChange,
   bookingRequests = [],
-  onApproveRequest
+  onApproveRequest,
+  onRemoveBookedRange
 }) {
   if (!isOpen || !room) return null;
 
@@ -248,14 +249,30 @@ export default function RoomDetailsModal({
 
                 {/* 2. Coordinated Calendar Blocks */}
                 {Array.isArray(room.bookedRanges) && room.bookedRanges.map((b, idx) => (
-                  <div key={b.id || idx} className="p-2.5 rounded-lg bg-stone-50 border border-stone-200 text-xs flex items-center justify-between">
+                  <div key={b.id || idx} className="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-xs flex items-center justify-between">
                     <div>
                       <span className="font-medium text-stone-900">{b.guestName || 'VIP Reservation'}</span>
                       <span className="text-[10px] text-stone-500 block font-mono">{b.source || 'Scheduled Block'}</span>
                     </div>
-                    <span className="font-mono text-rose-700 font-medium text-[11px]">
-                      {b.checkIn} → {b.checkOut}
-                    </span>
+                    <div className="flex items-center space-x-2">
+                      <span className="font-mono text-rose-700 font-bold text-[11px]">
+                        {b.checkIn} → {b.checkOut}
+                      </span>
+                      {onRemoveBookedRange && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (window.confirm(`Unlock dates ${b.checkIn} to ${b.checkOut} for Room #${room.roomNumber}?`)) {
+                              onRemoveBookedRange(room.id, b.id);
+                              onClose();
+                            }
+                          }}
+                          className="px-2 py-0.5 rounded text-[10px] font-mono text-rose-700 hover:text-white hover:bg-rose-600 border border-rose-300 transition-colors"
+                        >
+                          Unlock
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>

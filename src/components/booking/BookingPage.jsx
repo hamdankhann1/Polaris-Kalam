@@ -396,24 +396,15 @@ export default function BookingPage({
                       </div>
 
                       {/* Status indicator */}
-                      {isAvailable && (
-                        <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-mono uppercase tracking-wider bg-emerald-50 border border-emerald-300 text-emerald-800 font-bold">
-                          <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                          <span>Available</span>
-                        </span>
-                      )}
-
-                      {isBooked && (
-                        <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-mono uppercase tracking-wider bg-rose-50 border border-rose-300 text-rose-800 font-bold">
-                          <span className="w-2 h-2 rounded-full bg-rose-500" />
-                          <span>Fully Booked</span>
-                        </span>
-                      )}
-
-                      {isCleaning && (
+                      {isCleaning ? (
                         <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-mono uppercase tracking-wider bg-amber-50 border border-amber-300 text-amber-900 font-bold">
                           <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
                           <span>Turnover</span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-mono uppercase tracking-wider bg-emerald-50 border border-emerald-300 text-emerald-800 font-bold">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                          <span>Available</span>
                         </span>
                       )}
                     </div>
@@ -463,29 +454,7 @@ export default function BookingPage({
 
                   {/* Card Action Button */}
                   <div className="p-5 sm:p-7 pt-0">
-                    {isAvailable && (
-                      <button
-                        onClick={() => handleOpenBooking(room)}
-                        className="w-full py-3.5 rounded-xl text-xs sm:text-sm font-mono uppercase tracking-wider bg-[#B48A28] hover:bg-[#9E7719] text-white font-bold transition-all flex items-center justify-center space-x-2 shadow-sm hover:shadow-md"
-                      >
-                        <Calendar className="w-4 h-4 text-white" />
-                        <span>Select Dates & Reserve</span>
-                        <ArrowRight className="w-4 h-4" />
-                      </button>
-                    )}
-
-                    {isBooked && (
-                      <button
-                        onClick={() => handleOpenBooking(room)}
-                        className="w-full py-3.5 rounded-xl text-xs sm:text-sm font-mono uppercase tracking-wider bg-stone-100 hover:bg-stone-200 border border-stone-300 text-stone-800 font-bold transition-all flex items-center justify-center space-x-2 shadow-2xs"
-                      >
-                        <Calendar className="w-4 h-4 text-rose-600" />
-                        <span>Check Calendar & Future Dates</span>
-                        <ArrowRight className="w-4 h-4 text-stone-600" />
-                      </button>
-                    )}
-
-                    {isCleaning && (
+                    {isCleaning ? (
                       <button
                         onClick={() => handleOpenBooking(room)}
                         className="w-full py-3.5 rounded-xl text-xs sm:text-sm font-mono uppercase tracking-wider bg-amber-50 hover:bg-amber-100/80 border border-amber-300 text-[#8A661C] font-bold transition-all flex items-center justify-center space-x-2 shadow-2xs"
@@ -493,6 +462,15 @@ export default function BookingPage({
                         <Calendar className="w-4 h-4 text-amber-600" />
                         <span>In Turnover • Book Upcoming Stay</span>
                         <ArrowRight className="w-4 h-4 text-amber-600" />
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleOpenBooking(room)}
+                        className="w-full py-3.5 rounded-xl text-xs sm:text-sm font-mono uppercase tracking-wider bg-[#B48A28] hover:bg-[#9E7719] text-white font-bold transition-all flex items-center justify-center space-x-2 shadow-sm hover:shadow-md"
+                      >
+                        <Calendar className="w-4 h-4 text-white" />
+                        <span>Select Dates & Reserve</span>
+                        <ArrowRight className="w-4 h-4" />
                       </button>
                     )}
                   </div>

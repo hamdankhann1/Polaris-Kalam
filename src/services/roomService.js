@@ -160,7 +160,7 @@ export const INITIAL_ROOMS = [
     floor: 'Floor 3',
     capacity: '3 Guests • 1 King + 1 Daybed',
     pricePKR: 68000,
-    status: 'booked',
+    status: 'available',
     amenities: [
       'Private Stargazing Balcony',
       'Stone Hearth Fireplace',
@@ -253,7 +253,7 @@ export const INITIAL_ROOMS = [
     floor: 'Floor 2',
     capacity: '4 Guests • 2 Queen Beds',
     pricePKR: 46000,
-    status: 'booked',
+    status: 'available',
     amenities: [
       'River & Ridge Vistas',
       'Twin Vanities',
@@ -431,7 +431,7 @@ export const RoomService = {
   },
 
   /**
-   * Sync with cloud /api/rooms (MongoDB Atlas on Vercel)
+   * Sync with cloud /api/rooms (MongoDB Atlas on Vercel / Hostinger)
    */
   async syncWithCloud() {
     if (typeof window === 'undefined') return;
@@ -440,10 +440,39 @@ export const RoomService = {
       if (res.ok) {
         const json = await res.json();
         if (json.success && Array.isArray(json.data) && json.data.length > 0) {
-          const current = localStorage.getItem(STORAGE_KEY);
-          if (JSON.stringify(json.data) !== current) {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(json.data));
-            notifyListeners(json.data);
+          const raw = localStorage.getItem(STORAGE_KEY);
+          const localRooms = raw ? JSON.parse(raw) : [];
+
+          // Smart merge: never overwrite fresher local changes with stale cloud responses
+          const merged = json.data.map((cloudRoom) => {
+            const local = localRooms.find((l) => l.id === cloudRoom.id);
+            if (!local) return cloudRoom;
+            const localTime = new Date(local.updatedAt || 0).getTime();
+            const cloudTime = new Date(cloudRoom.updatedAt || 0).getTime();
+            if (localTime > cloudTime) {
+              // Local is more recent, push local room state to cloud
+              fetch('/api/rooms', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(local)
+              }).catch(() => {});
+              return local;
+            }
+            return cloudRoom;
+          });
+
+          // Retain any locally added rooms not yet in cloud
+          localRooms.forEach((local) => {
+            if (!merged.some((m) => m.id === local.id)) {
+              merged.push(local);
+            }
+          });
+
+          const currentStr = localStorage.getItem(STORAGE_KEY);
+          const mergedStr = JSON.stringify(merged);
+          if (currentStr !== mergedStr) {
+            localStorage.setItem(STORAGE_KEY, mergedStr);
+            notifyListeners(merged);
           }
         }
       }
@@ -590,12 +619,25 @@ export const RoomService = {
       logAudit('ROOM_UPDATED', room.id, room.roomNumber, fields);
     }
 
+    // Sync room updates to cloud
+    try {
+      if (typeof window !== 'undefined') {
+        fetch('/api/rooms', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(room)
+        }).catch(() => {});
+      }
+    } catch (e) {}
+
     notifyListeners(rooms);
     return room;
   },
 
   /**
-   * Update a room's status between: 'available', 'booked', and 'in cleaning'
+   * Update a room's operational status ('available' or 'in cleaning'),
+   * or lock specific dates if 'booked' is passed.
+   * A ROOM CAN NEVER BE LOCKED AS A WHOLE!
    */
   async updateStatus(roomId, newStatus, meta = {}) {
     const rooms = await this.getRooms();
@@ -608,40 +650,41 @@ export const RoomService = {
     const room = { ...rooms[index] };
     const prevStatus = room.status;
 
-    room.status = newStatus;
-    room.updatedAt = new Date().toISOString();
-
+    // A room can NEVER be locked as a whole!
+    // If 'booked' or dates are passed, add to bookedRanges and keep room available for other dates
     if (newStatus === 'booked') {
-      const bookingEntry = {
-        id: 'b-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
-        guestName: meta.guestName || 'VIP Guest (Direct Booking)',
-        checkIn: meta.checkIn || new Date().toISOString().split('T')[0],
-        checkOut: meta.checkOut || new Date(Date.now() + 86400000 * 2).toISOString().split('T')[0],
-        source: meta.source || 'Other Hotel CMS (Sync)',
-        notes: meta.notes || '',
-        bookingRef: meta.bookingRef || 'PK-' + Math.floor(1000 + Math.random() * 9000),
-        bookedAt: new Date().toISOString()
-      };
-      room.activeBooking = bookingEntry;
-      room.cleaningInfo = null;
+      room.status = 'available';
+      if (meta.checkIn && meta.checkOut) {
+        const bookingEntry = {
+          id: 'b-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+          guestName: meta.guestName || 'VIP Guest (Direct Booking)',
+          checkIn: meta.checkIn,
+          checkOut: meta.checkOut,
+          source: meta.source || 'Staff CMS Date Block',
+          notes: meta.notes || '',
+          bookingRef: meta.bookingRef || 'PK-' + Math.floor(1000 + Math.random() * 9000),
+          createdAt: new Date().toISOString()
+        };
+        room.activeBooking = bookingEntry;
 
-      // Synchronize into bookedRanges calendar
-      room.bookedRanges = Array.isArray(room.bookedRanges) ? [...room.bookedRanges] : [];
-      const alreadyHas = room.bookedRanges.some(
-        (b) => b.checkIn === bookingEntry.checkIn && b.checkOut === bookingEntry.checkOut
-      );
-      if (!alreadyHas) {
-        room.bookedRanges.push(bookingEntry);
+        // Synchronize into bookedRanges calendar
+        room.bookedRanges = Array.isArray(room.bookedRanges) ? [...room.bookedRanges] : [];
+        const alreadyHas = room.bookedRanges.some(
+          (b) => b.checkIn === bookingEntry.checkIn && b.checkOut === bookingEntry.checkOut
+        );
+        if (!alreadyHas) {
+          room.bookedRanges.push(bookingEntry);
+        }
+
+        logAudit('ROOM_DATES_LOCKED', room.id, room.roomNumber, {
+          guestName: bookingEntry.guestName,
+          source: bookingEntry.source,
+          checkIn: bookingEntry.checkIn,
+          checkOut: bookingEntry.checkOut
+        });
       }
-
-      logAudit('ROOM_MARKED_BOOKED', room.id, room.roomNumber, {
-        guestName: room.activeBooking.guestName,
-        source: room.activeBooking.source,
-        checkIn: room.activeBooking.checkIn,
-        checkOut: room.activeBooking.checkOut
-      });
-
     } else if (newStatus === 'in cleaning') {
+      room.status = 'in cleaning';
       room.cleaningInfo = {
         assignedTo: meta.assignedTo || 'Housekeeping Duty Team',
         priority: meta.priority || 'Standard Turnover',
@@ -655,8 +698,8 @@ export const RoomService = {
         priority: room.cleaningInfo.priority,
         notes: room.cleaningInfo.notes
       });
-
     } else if (newStatus === 'available') {
+      room.status = 'available';
       room.activeBooking = null;
       room.cleaningInfo = null;
       room.lastCleanedAt = new Date().toISOString();
@@ -668,8 +711,31 @@ export const RoomService = {
       });
     }
 
+    room.updatedAt = new Date().toISOString();
     rooms[index] = room;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(rooms));
+
+    // Immediately push update to cloud API so changes persist in MongoDB Atlas
+    try {
+      if (typeof window !== 'undefined') {
+        fetch('/api/rooms', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: roomId,
+            status: room.status,
+            cleaningInfo: room.cleaningInfo,
+            activeBooking: room.activeBooking,
+            bookedRanges: room.bookedRanges,
+            lastCleanedAt: room.lastCleanedAt,
+            updatedAt: room.updatedAt
+          })
+        }).catch(() => {});
+      }
+    } catch (e) {
+      // offline fallback
+    }
+
     notifyListeners(rooms);
     return room;
   },
@@ -758,8 +824,23 @@ export const RoomService = {
       createdAt: new Date().toISOString()
     };
     room.bookedRanges.push(newEntry);
+    room.updatedAt = new Date().toISOString();
     rooms[index] = room;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(rooms));
+
+    // Sync booked ranges to cloud database (MongoDB Atlas / Hostinger API)
+    try {
+      if (typeof window !== 'undefined') {
+        fetch('/api/rooms', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: roomId, bookedRanges: room.bookedRanges, updatedAt: room.updatedAt })
+        }).catch(() => {});
+      }
+    } catch (e) {
+      // offline fallback
+    }
+
     notifyListeners(rooms);
     return newEntry;
   },
@@ -775,8 +856,23 @@ export const RoomService = {
     const room = { ...rooms[index] };
     if (Array.isArray(room.bookedRanges)) {
       room.bookedRanges = room.bookedRanges.filter((b) => b.id !== rangeId);
+      room.updatedAt = new Date().toISOString();
       rooms[index] = room;
       localStorage.setItem(STORAGE_KEY, JSON.stringify(rooms));
+
+      // Sync updated booked ranges to cloud database
+      try {
+        if (typeof window !== 'undefined') {
+          fetch('/api/rooms', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: roomId, bookedRanges: room.bookedRanges, updatedAt: room.updatedAt })
+          }).catch(() => {});
+        }
+      } catch (e) {
+        // offline fallback
+      }
+
       notifyListeners(rooms);
     }
     return room;
@@ -798,9 +894,10 @@ export const RoomService = {
   calculateStats(rooms) {
     const total = rooms.length;
     const available = rooms.filter((r) => r.status === 'available').length;
-    const booked = rooms.filter((r) => r.status === 'booked').length;
     const inCleaning = rooms.filter((r) => r.status === 'in cleaning').length;
-    const occupancyRate = total > 0 ? Math.round((booked / total) * 100) : 0;
+    const hasBookedRanges = rooms.filter((r) => Array.isArray(r.bookedRanges) && r.bookedRanges.length > 0).length;
+    const booked = hasBookedRanges;
+    const occupancyRate = total > 0 ? Math.round((hasBookedRanges / total) * 100) : 0;
 
     // Floor counts
     const byCategory = {
