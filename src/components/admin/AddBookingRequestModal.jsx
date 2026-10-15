@@ -13,12 +13,11 @@ import PolarisCalendar from '../common/PolarisCalendar';
  * with status 'pending' (which increments the red notification badge count)
  * or 'approved'.
  */
-export default function AddBookingRequestModal({ isOpen, onClose, rooms, onSaveRequest }) {
+export default function AddBookingRequestModal({ isOpen, onClose, rooms, onSaveRequest, bookingRequests = [] }) {
   if (!isOpen) return null;
 
   const today = new Date().toISOString().split('T')[0];
-  const SOFT_LAUNCH_DATE = '2026-12-01';
-  const defaultStart = today < SOFT_LAUNCH_DATE ? SOFT_LAUNCH_DATE : today;
+  const defaultStart = today;
   const defaultEnd = new Date(new Date(defaultStart + 'T00:00:00').getTime() + 86400000 * 3).toISOString().split('T')[0];
 
   const [selectedRoomId, setSelectedRoomId] = useState(rooms[0]?.id || '');
@@ -37,8 +36,8 @@ export default function AddBookingRequestModal({ isOpen, onClose, rooms, onSaveR
 
   const bookedDates = useMemo(() => {
     if (!selectedRoom) return [];
-    return RoomService.getBookedDatesForRoomSync(selectedRoom);
-  }, [selectedRoom]);
+    return RoomService.getBookedDatesForRoomSync(selectedRoom, bookingRequests);
+  }, [selectedRoom, bookingRequests]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -212,9 +211,8 @@ export default function AddBookingRequestModal({ isOpen, onClose, rooms, onSaveR
 
           {/* Live Suite Calendar Coordination */}
           <div>
-            <label className="block text-[11px] font-mono uppercase tracking-wider text-stone-700 mb-2 font-medium flex items-center justify-between">
-              <span>Select Stay Dates on Suite Calendar *</span>
-              <span className="text-[10px] text-amber-700 font-mono">Soft Launch: Dec 1, 2026 (Earlier Dates Disabled)</span>
+            <label className="block text-[11px] font-mono uppercase tracking-wider text-stone-700 mb-2 font-medium">
+              Select Stay Dates on Suite Calendar *
             </label>
 
             <PolarisCalendar
@@ -225,7 +223,6 @@ export default function AddBookingRequestModal({ isOpen, onClose, rooms, onSaveR
                 setCheckOut(cOut);
               }}
               bookedDates={bookedDates}
-              minDate="2026-12-01"
               pricePKR={selectedRoom ? selectedRoom.pricePKR : 0}
               roomName={selectedRoom ? selectedRoom.name : 'Suite'}
               roomNumber={selectedRoom ? selectedRoom.roomNumber : ''}

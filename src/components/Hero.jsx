@@ -54,7 +54,10 @@ export default function Hero({ onOpenInquiry, onOpenBooking }) {
       <div className="inline-flex items-center justify-center space-x-1.5 sm:space-x-2 px-3 sm:px-4 py-1.5 mb-6 sm:mb-8 border border-stone-200/90 bg-white/90 shadow-xs backdrop-blur-md rounded-full max-w-[92vw]">
         <MapPin className="w-3.5 h-3.5 text-[#B48A28] shrink-0" />
         <span className="text-[11px] sm:text-xs md:text-sm font-mono tracking-wider text-stone-700 uppercase font-medium truncate">
-          <span className="hidden sm:inline">{POLARIS_CONFIG.coordinates} • </span>{POLARIS_CONFIG.location}
+          <span className="hidden sm:inline">
+            {POLARIS_CONFIG.coordinates} •{" "}
+          </span>
+          {POLARIS_CONFIG.location}
         </span>
       </div>
 
@@ -103,8 +106,8 @@ export default function Hero({ onOpenInquiry, onOpenBooking }) {
       {/* ------------------------------------------------------------- */}
       <div className="w-full max-w-lg mb-8 sm:mb-10 p-4 sm:p-6 rounded-xl bg-gradient-to-r from-amber-50/90 via-[#FFFDF7] to-amber-50/90 border border-amber-300/80 text-center space-y-3 backdrop-blur-md shadow-[0_4px_25px_rgba(180,138,40,0.08)]">
         <div className="flex items-center justify-center space-x-2 text-[#8A661C] text-xs sm:text-sm font-mono font-bold tracking-wider uppercase">
-          <Sparkles className="w-4 h-4 text-amber-600 animate-pulse shrink-0" />
-          <span>BOOKING WILL BE OPEN SOON</span>
+          <Sparkles className="w-4 h-4 text-green-600 animate-pulse shrink-0" />
+          <span>BOOKING IS OPEN FOR SOFT LAUNCH DECEMBER</span>
         </div>
         <p className="text-xs sm:text-sm text-stone-700 font-normal leading-relaxed">
           Our 4 floors of panoramic alpine suites and summit penthouse are
@@ -117,7 +120,9 @@ export default function Hero({ onOpenInquiry, onOpenBooking }) {
               onClick={onOpenBooking}
               className="w-full sm:w-auto px-4 sm:px-5 py-2.5 bg-white hover:bg-amber-50/90 border border-amber-400/80 hover:border-amber-600 text-[#8A661C] hover:text-[#705215] text-xs sm:text-sm font-mono uppercase tracking-wider transition-all inline-flex items-center justify-center space-x-2 shadow-2xs font-bold rounded-lg"
             >
-              <span className="hidden sm:inline">Explore Suites & Pricing (Booking)</span>
+              <span className="hidden sm:inline">
+                Explore Suites & Pricing (Booking)
+              </span>
               <span className="sm:hidden">Explore Suites & Pricing</span>
               <ArrowUpRight className="w-4 h-4 text-amber-600 shrink-0" />
             </button>

@@ -1,15 +1,18 @@
 /**
  * =========================================================================
- * POLARIS HOTEL — BOOKING REQUEST SERVICE
+ * POLARIS HOTEL — BOOKING REQUEST SERVICE (HYBRID CLOUD & LOCAL STORAGE)
  * =========================================================================
  * 
  * Manages guest reservation requests submitted via the direct booking website
  * (polarishotels.pk/booking) or manually recorded by hotel staff.
  * 
- * Includes:
- * 1. Reactive subscription & Cross-Tab localStorage synchronization
- * 2. 1-Click WhatsApp greeting generator
- * 3. Status transitions: 'pending' (red badge), 'approved', 'contacted', 'declined'
+ * Features:
+ * 1. Dual-Layer Storage: Instant client rendering via localStorage + automatic
+ *    cloud synchronization via /api/bookings (MongoDB Atlas on Vercel).
+ * 2. Cross-Device Real-Time Sync: Bookings submitted on mobile devices automatically
+ *    propagate to the admin CMS on laptops and desktop browsers.
+ * 3. 1-Click WhatsApp greeting generator.
+ * 4. Status transitions: 'pending' (red badge), 'approved', 'contacted', 'declined'.
  */
 
 const STORAGE_KEY = 'polaris_booking_requests_v2';
@@ -57,6 +60,7 @@ const INITIAL_REQUESTS = [
 ];
 
 const listeners = new Set();
+let isSyncing = false;
 
 function notifyListeners(requests) {
   listeners.forEach((listener) => {
@@ -97,20 +101,78 @@ export const BookingRequestService = {
     return () => listeners.delete(callback);
   },
 
+  /**
+   * Fetch all requests.
+   * Returns local cached requests immediately, then syncs with cloud in background.
+   */
   async getRequests() {
+    let localData = null;
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed)) {
-          return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          localData = parsed;
         }
       }
     } catch (e) {
       console.warn('Could not read booking requests from localStorage', e);
     }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_REQUESTS));
-    return [...INITIAL_REQUESTS];
+
+    if (!localData) {
+      localData = [...INITIAL_REQUESTS];
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(localData));
+      } catch (e) {}
+    }
+
+    // Trigger background cloud sync if in browser
+    if (typeof window !== 'undefined') {
+      setTimeout(() => {
+        this.syncWithCloud().catch(() => {});
+      }, 50);
+    }
+
+    return [...localData];
+  },
+
+  /**
+   * Synchronize with cloud API (/api/bookings)
+   */
+  async syncWithCloud() {
+    if (isSyncing || typeof window === 'undefined') return;
+    isSyncing = true;
+
+    try {
+      const res = await fetch('/api/bookings', {
+        headers: { 'Accept': 'application/json' },
+        cache: 'no-store'
+      });
+
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+          const cloudRequests = json.data;
+          const currentStored = localStorage.getItem(STORAGE_KEY);
+          const currentParsed = currentStored ? JSON.parse(currentStored) : [];
+
+          // Merge: use cloud list as authoritative, but preserve any local items not yet in cloud
+          const cloudIds = new Set(cloudRequests.map((r) => r.id));
+          const localOnly = currentParsed.filter((r) => !cloudIds.has(r.id));
+          const merged = [...cloudRequests, ...localOnly];
+
+          const hasChanged = JSON.stringify(merged) !== currentStored;
+          if (hasChanged) {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+            notifyListeners(merged);
+          }
+        }
+      }
+    } catch (err) {
+      // Cloud sync offline or local dev without serverless - silent fallback to local
+    } finally {
+      isSyncing = false;
+    }
   },
 
   async resetToDefaults() {
@@ -119,6 +181,10 @@ export const BookingRequestService = {
     return [...INITIAL_REQUESTS];
   },
 
+  /**
+   * Create a new booking request.
+   * Optimistically updates UI & localStorage, then pushes to cloud API.
+   */
   async createRequest(data) {
     const requests = await this.getRequests();
 
@@ -151,9 +217,22 @@ export const BookingRequestService = {
     requests.unshift(newRequest);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(requests));
     notifyListeners(requests);
+
+    // Push to cloud backend
+    try {
+      fetch('/api/bookings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newRequest)
+      }).catch((e) => console.warn('Cloud API sync deferred:', e.message));
+    } catch (e) {}
+
     return newRequest;
   },
 
+  /**
+   * Update status of a request ('pending', 'approved', 'contacted', 'declined')
+   */
   async updateStatus(requestId, newStatus, note = '') {
     const requests = await this.getRequests();
     const index = requests.findIndex((r) => r.id === requestId);
@@ -169,9 +248,26 @@ export const BookingRequestService = {
 
     localStorage.setItem(STORAGE_KEY, JSON.stringify(requests));
     notifyListeners(requests);
+
+    // Sync to cloud
+    try {
+      fetch('/api/bookings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: requestId,
+          status: newStatus,
+          staffNote: note
+        })
+      }).catch(() => {});
+    } catch (e) {}
+
     return requests[index];
   },
 
+  /**
+   * Delete a booking request
+   */
   async deleteRequest(requestId) {
     const requests = await this.getRequests();
     const index = requests.findIndex((r) => r.id === requestId);
@@ -182,6 +278,16 @@ export const BookingRequestService = {
     const deleted = requests.splice(index, 1)[0];
     localStorage.setItem(STORAGE_KEY, JSON.stringify(requests));
     notifyListeners(requests);
+
+    // Sync to cloud
+    try {
+      fetch('/api/bookings', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: requestId })
+      }).catch(() => {});
+    } catch (e) {}
+
     return deleted;
   },
 
@@ -212,3 +318,16 @@ Concierge Team • Polaris Kalam Valley`;
     return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
   }
 };
+
+// Automatic background sync every 20 seconds while tab is active
+if (typeof window !== 'undefined') {
+  setInterval(() => {
+    if (document.visibilityState === 'visible') {
+      BookingRequestService.syncWithCloud().catch(() => {});
+    }
+  }, 20000);
+
+  window.addEventListener('focus', () => {
+    BookingRequestService.syncWithCloud().catch(() => {});
+  });
+}

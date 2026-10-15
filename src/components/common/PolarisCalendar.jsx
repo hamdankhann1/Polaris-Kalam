@@ -35,7 +35,7 @@ export default function PolarisCalendar({
   bookedDates = [],
   pricePKR = 0,
   nightlyRate = 0,
-  minDate = SOFT_LAUNCH_DATE, // Soft Launch: December 1, 2026
+  minDate = null,
   roomName = 'Suite',
   roomNumber = '',
   minNights = 1,
@@ -51,15 +51,15 @@ export default function PolarisCalendar({
   }, []);
 
   // Base month view state: year & month index (0-11).
-  // Defaults to soft launch month (December 2026) so guests immediately see bookable dates.
+  // Defaults to checkIn month or today's current month so guests can navigate freely.
   const [currentYear, setCurrentYear] = useState(() => {
-    if (checkIn && (!minDate || checkIn >= minDate)) return new Date(checkIn + 'T00:00:00').getFullYear();
+    if (checkIn) return new Date(checkIn + 'T00:00:00').getFullYear();
     if (minDate) return new Date(minDate + 'T00:00:00').getFullYear();
     return new Date().getFullYear();
   });
 
   const [currentMonth, setCurrentMonth] = useState(() => {
-    if (checkIn && (!minDate || checkIn >= minDate)) return new Date(checkIn + 'T00:00:00').getMonth();
+    if (checkIn) return new Date(checkIn + 'T00:00:00').getMonth();
     if (minDate) return new Date(minDate + 'T00:00:00').getMonth();
     return new Date().getMonth();
   });
@@ -76,7 +76,7 @@ export default function PolarisCalendar({
 
   const DAY_LABELS = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
 
-  // Check if current view is at or before the soft launch / min month
+  // Check if current view is at or before min month (if minDate is provided)
   const isMinMonthView = useMemo(() => {
     if (minDate) {
       const minD = new Date(minDate + 'T00:00:00');
@@ -84,11 +84,10 @@ export default function PolarisCalendar({
       if (currentYear === minD.getFullYear() && currentMonth <= minD.getMonth()) return true;
       return false;
     }
-    const now = new Date();
-    return currentYear === now.getFullYear() && currentMonth === now.getMonth();
+    return false;
   }, [currentYear, currentMonth, minDate]);
 
-  // Navigate to previous month (disabled if current view is already at or before soft launch month)
+  // Navigate to previous month
   const handlePrevMonth = () => {
     if (isMinMonthView) return;
     if (currentMonth === 0) {
@@ -109,27 +108,11 @@ export default function PolarisCalendar({
     }
   };
 
-  // Reset view to soft launch month
+  // Reset view to current month
   const handleResetToCurrentMonth = () => {
-    if (minDate) {
-      const minD = new Date(minDate + 'T00:00:00');
-      setCurrentYear(minD.getFullYear());
-      setCurrentMonth(minD.getMonth());
-    } else {
-      const now = new Date();
-      setCurrentYear(now.getFullYear());
-      setCurrentMonth(now.getMonth());
-    }
-  };
-
-  // Helper: check if date is before soft launch day (Dec 1, 2026)
-  const isPreLaunch = (dateStr) => {
-    return minDate ? dateStr < minDate : false;
-  };
-
-  // Helper: check if date is past
-  const isDateInPast = (dateStr) => {
-    return dateStr < todayStr;
+    const now = new Date();
+    setCurrentYear(now.getFullYear());
+    setCurrentMonth(now.getMonth());
   };
 
   // Helper: check if date is booked for this suite
@@ -155,8 +138,6 @@ export default function PolarisCalendar({
         dayNumber: d,
         dateStr,
         isCurrentMonth: false,
-        isPast: isDateInPast(dateStr),
-        isPreLaunch: isPreLaunch(dateStr),
         isBooked: isDateBooked(dateStr)
       });
     }
@@ -168,8 +149,6 @@ export default function PolarisCalendar({
         dayNumber: d,
         dateStr,
         isCurrentMonth: true,
-        isPast: isDateInPast(dateStr),
-        isPreLaunch: isPreLaunch(dateStr),
         isBooked: isDateBooked(dateStr)
       });
     }
@@ -184,14 +163,12 @@ export default function PolarisCalendar({
         dayNumber: d,
         dateStr,
         isCurrentMonth: false,
-        isPast: isDateInPast(dateStr),
-        isPreLaunch: isPreLaunch(dateStr),
         isBooked: isDateBooked(dateStr)
       });
     }
 
     return days;
-  }, [currentYear, currentMonth, bookedDates, todayStr, minDate]);
+  }, [currentYear, currentMonth, bookedDates]);
 
   // Check if a range has any booked dates in between
   const hasBookedDatesInRange = (startStr, endStr) => {
@@ -216,19 +193,7 @@ export default function PolarisCalendar({
   const handleDateClick = (dayObj) => {
     setValidationError('');
 
-    // Rule 1: Cannot select dates prior to Soft Launch (Dec 1, 2026)
-    if (dayObj.isPreLaunch) {
-      setValidationError('Polaris Kalam Hotel opens on December 1, 2026 (Soft Launch). Dates prior to Dec 1 are disabled.');
-      return;
-    }
-
-    // Rule 2: Cannot select past dates
-    if (dayObj.isPast) {
-      setValidationError('Past dates are unavailable for reservations.');
-      return;
-    }
-
-    // Rule 3: Cannot select booked dates
+    // Cannot select booked dates
     if (dayObj.isBooked) {
       setValidationError('This suite is already reserved on this date. Please choose an available date.');
       return;
@@ -385,17 +350,6 @@ export default function PolarisCalendar({
         </div>
       </div>
 
-      {/* Soft Launch Notice */}
-      <div className="mt-3.5 px-3 sm:px-3.5 py-2.5 rounded-xl bg-amber-50/90 border border-amber-300 text-amber-950 text-xs sm:text-sm font-mono flex flex-col sm:flex-row sm:items-center justify-between gap-1 sm:gap-2 shadow-2xs font-medium">
-        <span className="flex items-center space-x-1.5 sm:space-x-2">
-          <Sparkles className="w-3.5 h-3.5 text-[#B48A28] shrink-0" />
-          <span>Soft Launch: <strong className="font-bold">December 1, 2026</strong></span>
-        </span>
-        <span className="text-[11px] sm:text-xs text-[#8A661C] uppercase font-bold tracking-wider">
-          Earlier Dates Disabled
-        </span>
-      </div>
-
       {/* =====================================================================
           2. MONTH NAVIGATION BAR
           ===================================================================== */}
@@ -409,7 +363,7 @@ export default function PolarisCalendar({
               ? 'opacity-30 cursor-not-allowed border-transparent text-stone-400'
               : 'border-stone-200 hover:border-[#B48A28] hover:bg-stone-100 text-stone-700 hover:text-stone-900'
           }`}
-          title={isMinMonthView ? 'Soft Launch starts Dec 1, 2026' : 'Previous Month'}
+          title="Previous Month"
           aria-label="Previous Month"
         >
           <ChevronLeft className="w-4 h-4" />
@@ -420,7 +374,7 @@ export default function PolarisCalendar({
             {MONTH_NAMES[currentMonth]} {currentYear}
           </span>
           <p className="text-xs font-mono text-[#8A661C] uppercase tracking-wider font-semibold mt-0.5">
-            {currentYear === 2026 && currentMonth === 11 ? 'Soft Launch Inaugural Month' : 'Kalam Seasonal Allocation'}
+            Kalam Seasonal Allocation
           </p>
         </div>
 
@@ -443,7 +397,7 @@ export default function PolarisCalendar({
         </div>
       ) : !checkIn ? (
         <div className="mt-3 text-xs sm:text-sm font-mono text-stone-700 text-center font-medium">
-          Tap an available date starting from <strong className="font-bold text-stone-900">December 1, 2026</strong>.
+          Tap an available date on the calendar to begin your reservation.
         </div>
       ) : !checkOut ? (
         <div className="mt-3 text-xs sm:text-sm font-mono text-[#8A661C] text-center flex items-center justify-center space-x-1.5 animate-pulse font-bold">
@@ -473,7 +427,7 @@ export default function PolarisCalendar({
           ===================================================================== */}
       <div className="mt-1 grid grid-cols-7 gap-1 sm:gap-1.5 select-none w-full max-w-full">
         {calendarDays.map((dayObj, idx) => {
-          const { dayNumber, dateStr, isCurrentMonth, isPast, isPreLaunch, isBooked } = dayObj;
+          const { dayNumber, dateStr, isCurrentMonth, isBooked } = dayObj;
 
           const isCheckIn = dateStr === checkIn;
           const isCheckOut = dateStr === checkOut;
@@ -481,9 +435,8 @@ export default function PolarisCalendar({
           const isHoverRange = checkIn && !checkOut && hoverDate && dateStr > checkIn && dateStr <= hoverDate;
           const isToday = dateStr === todayStr;
 
-          // Determine disabled state: pre-launch (before Dec 1, 2026), past, booked, or outside month
-          const isPreLaunchOrPast = isPast || isPreLaunch;
-          const isDisabled = isPreLaunchOrPast || isBooked || !isCurrentMonth;
+          // Determine disabled state: booked dates or outside current month
+          const isDisabled = isBooked || !isCurrentMonth;
 
           return (
             <button
@@ -504,16 +457,13 @@ export default function PolarisCalendar({
                   // 2. Dates in Range (Selected or Hover)
                   : isInRange || isHoverRange
                   ? 'bg-[#FAF6ED] text-[#8A661C] border-y border-[#B48A28]/30 rounded-none font-bold'
-                  // 3. Pre-Launch or Past Dates (Greyed out, line-through)
-                  : isPreLaunchOrPast
-                  ? 'bg-stone-100/60 text-stone-400 line-through opacity-45 cursor-not-allowed border border-transparent'
-                  // 4. Booked Dates (Rose badge, locked)
+                  // 3. Booked Dates (Rose badge, locked)
                   : isBooked
                   ? 'bg-rose-50 border border-rose-300 text-rose-500/80 cursor-not-allowed'
-                  // 5. Outside current month
+                  // 4. Outside current month
                   : !isCurrentMonth
                   ? 'text-stone-300 opacity-40 cursor-not-allowed'
-                  // 6. Available dates
+                  // 5. Available dates
                   : 'text-stone-800 hover:bg-amber-50 hover:text-[#B48A28] hover:border-[#B48A28]/40 border border-stone-200/80 bg-stone-50/70 font-semibold'
               }`}
             >
@@ -564,11 +514,6 @@ export default function PolarisCalendar({
           <span className="flex items-center space-x-1.5 text-rose-700 font-semibold">
             <span className="w-3 h-3 rounded bg-rose-50 border border-rose-300 inline-block" />
             <span>Booked</span>
-          </span>
-
-          <span className="flex items-center space-x-1.5 text-stone-400 line-through">
-            <span className="w-3 h-3 rounded bg-stone-100 border border-stone-200 inline-block opacity-60" />
-            <span>Pre-Launch / Past</span>
           </span>
 
           <span className="flex items-center space-x-1.5 text-[#8A661C] font-bold">

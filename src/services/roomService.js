@@ -384,7 +384,7 @@ export const RoomService = {
   },
 
   /**
-   * Fetch all rooms
+   * Fetch all rooms (immediate local cached read + background cloud sync)
    */
   async getRooms() {
     try {
@@ -392,6 +392,9 @@ export const RoomService = {
       if (stored) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed) && parsed.length > 0) {
+          if (typeof window !== 'undefined') {
+            setTimeout(() => this.syncWithCloud().catch(() => {}), 100);
+          }
           return parsed.map((r) => ({
             ...r,
             bookedRanges: Array.isArray(r.bookedRanges) ? r.bookedRanges : []
@@ -421,7 +424,32 @@ export const RoomService = {
     }
     // Initialize default seed
     localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_ROOMS));
+    if (typeof window !== 'undefined') {
+      setTimeout(() => this.syncWithCloud().catch(() => {}), 100);
+    }
     return [...INITIAL_ROOMS];
+  },
+
+  /**
+   * Sync with cloud /api/rooms (MongoDB Atlas on Vercel)
+   */
+  async syncWithCloud() {
+    if (typeof window === 'undefined') return;
+    try {
+      const res = await fetch('/api/rooms', { cache: 'no-store' });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+          const current = localStorage.getItem(STORAGE_KEY);
+          if (JSON.stringify(json.data) !== current) {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(json.data));
+            notifyListeners(json.data);
+          }
+        }
+      }
+    } catch (e) {
+      // offline / local fallback
+    }
   },
 
   /**
@@ -677,10 +705,10 @@ export const RoomService = {
       });
     }
 
-    // 3. Any approved booking requests for this room
+    // 3. Any approved or pending booking requests for this room
     if (Array.isArray(requests)) {
       requests
-        .filter((req) => req.roomId === room.id && req.status === 'approved' && req.checkIn && req.checkOut)
+        .filter((req) => req.roomId === room.id && (req.status === 'approved' || req.status === 'pending') && req.checkIn && req.checkOut)
         .forEach((req) => {
           const dates = getBookedNightsInRange(req.checkIn, req.checkOut);
           dates.forEach((d) => bookedSet.add(d));
@@ -701,7 +729,7 @@ export const RoomService = {
     let requests = [];
     try {
       if (typeof window !== 'undefined') {
-        const raw = localStorage.getItem('polaris_booking_requests_v1');
+        const raw = localStorage.getItem('polaris_booking_requests_v2');
         if (raw) requests = JSON.parse(raw);
       }
     } catch (e) {

@@ -17,17 +17,17 @@ export default function Footer({ onOpenInquiry, onOpenBooking }) {
   const currentYear = new Date().getFullYear();
 
   return (
-    <footer className="relative w-full max-w-full overflow-x-hidden border-t border-stone-200/90 bg-[#F5F2EB] text-stone-700 py-12 sm:py-16 px-3 sm:px-6">
+    <footer className="relative w-full max-w-full overflow-x-hidden border-t border-stone-200/90 bg-[#F5F2EB] text-stone-700 py-8 sm:py-14 md:py-16 px-4 sm:px-6">
       
       {/* Top Hairline Gold Glow */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-1/3 h-[1px] bg-gradient-to-r from-transparent via-amber-500/50 to-transparent" />
 
-      <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-12 gap-8 sm:gap-10 lg:gap-12">
+      <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-12 gap-6 sm:gap-8 lg:gap-12">
         
         {/* COLUMN 1: BRAND OVERVIEW (5 cols) */}
-        <div className="md:col-span-5 space-y-4">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-full border border-amber-500/30 flex items-center justify-center bg-white shadow-2xs p-1.5 shrink-0">
+        <div className="md:col-span-5 space-y-2.5 sm:space-y-4">
+          <div className="flex items-center space-x-2.5 sm:space-x-3">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full border border-amber-500/30 flex items-center justify-center bg-white shadow-2xs p-1.5 shrink-0">
               <img
                 src={POLARIS_CONFIG.emblem}
                 alt="Polaris Hotels & Resorts"
@@ -35,38 +35,37 @@ export default function Footer({ onOpenInquiry, onOpenBooking }) {
               />
             </div>
             <div className="flex flex-col min-w-0">
-              <span className="font-display text-2xl tracking-[0.22em] text-stone-900 font-medium leading-tight truncate">
+              <span className="font-display text-xl sm:text-2xl tracking-[0.2em] sm:tracking-[0.22em] text-stone-900 font-medium leading-tight truncate">
                 {POLARIS_CONFIG.hotelName}
               </span>
-              <span className="text-[10px] sm:text-xs tracking-[0.2em] text-[#8A661C] uppercase font-sans font-bold truncate">
+              <span className="text-[9.5px] sm:text-xs tracking-[0.16em] sm:tracking-[0.2em] text-[#8A661C] uppercase font-sans font-bold truncate">
                 {POLARIS_CONFIG.brandSubtitle}
               </span>
             </div>
           </div>
 
-          <p className="text-sm text-stone-700 font-normal leading-relaxed max-w-sm">
-            {POLARIS_CONFIG.tagline}. An avant-garde hospitality sanctuary currently 
-            under development in the scenic heights of Kalam Valley, Swat.
+          <p className="text-xs sm:text-sm text-stone-700 font-normal leading-relaxed max-w-sm">
+            <span className="hidden sm:inline">{POLARIS_CONFIG.tagline}. </span>An avant-garde hospitality sanctuary currently under development in the heights of Kalam Valley, Swat.
           </p>
 
-          <div className="pt-1 text-[11px] sm:text-xs font-mono tracking-wider text-[#8A661C] font-bold break-words">
+          <div className="pt-0.5 text-[10.5px] sm:text-xs font-mono tracking-wider text-[#8A661C] font-bold break-words">
             COORDINATES: {POLARIS_CONFIG.coordinates}
           </div>
         </div>
 
         {/* COLUMN 2: CONTACT & LOCATION (4 cols) */}
-        <div className="md:col-span-4 space-y-3.5">
-          <div className="text-xs sm:text-sm font-mono tracking-wider uppercase text-stone-900 font-bold mb-2">
+        <div className="md:col-span-4 space-y-2 sm:space-y-3">
+          <div className="text-xs sm:text-sm font-mono tracking-wider uppercase text-stone-900 font-bold mb-1 sm:mb-2">
             Concierge & Contact
           </div>
 
-          <div className="flex items-start space-x-3 text-sm font-normal text-stone-700">
-            <MapPin className="w-4 h-4 text-[#B48A28] shrink-0 mt-0.5" />
+          <div className="flex items-start space-x-2.5 sm:space-x-3 text-xs sm:text-sm font-normal text-stone-700">
+            <MapPin className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#B48A28] shrink-0 mt-0.5" />
             <span>{POLARIS_CONFIG.contact.locationAddress}</span>
           </div>
 
-          <div className="flex items-center space-x-3 text-sm font-normal text-stone-700">
-            <Mail className="w-4 h-4 text-[#B48A28] shrink-0" />
+          <div className="flex items-center space-x-2.5 sm:space-x-3 text-xs sm:text-sm font-normal text-stone-700">
+            <Mail className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#B48A28] shrink-0" />
             <a 
               href={`mailto:${POLARIS_CONFIG.contact.email}`}
               className="hover:text-[#B48A28] transition-colors"
@@ -75,8 +74,8 @@ export default function Footer({ onOpenInquiry, onOpenBooking }) {
             </a>
           </div>
 
-          <div className="flex items-center space-x-3 text-sm font-normal text-stone-700">
-            <Phone className="w-4 h-4 text-[#B48A28] shrink-0" />
+          <div className="flex items-center space-x-2.5 sm:space-x-3 text-xs sm:text-sm font-normal text-stone-700">
+            <Phone className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#B48A28] shrink-0" />
             <a 
               href={`tel:${POLARIS_CONFIG.contact.phone.replace(/[^0-9+]/g, '')}`}
               className="hover:text-[#B48A28] transition-colors"
@@ -87,19 +86,19 @@ export default function Footer({ onOpenInquiry, onOpenBooking }) {
         </div>
 
         {/* COLUMN 3: INQUIRIES & RESERVATIONS (3 cols) */}
-        <div className="md:col-span-3 space-y-3.5">
-          <div className="text-xs sm:text-sm font-mono tracking-wider uppercase text-stone-900 font-bold mb-2">
+        <div className="md:col-span-3 space-y-2 sm:space-y-3">
+          <div className="text-xs sm:text-sm font-mono tracking-wider uppercase text-stone-900 font-bold mb-1 sm:mb-2">
             Inquiries & Stays
           </div>
 
-          <p className="text-sm text-stone-700 font-normal leading-relaxed">
+          <p className="hidden sm:block text-sm text-stone-700 font-normal leading-relaxed">
             Discover our inaugural season allocations, partner inquiries, or press previews.
           </p>
 
-          <div className="flex flex-col space-y-3 pt-1">
+          <div className="flex flex-row sm:flex-col flex-wrap gap-x-4 gap-y-2 pt-0.5">
             <button
               onClick={onOpenInquiry}
-              className="inline-flex items-center space-x-2 text-xs sm:text-sm tracking-wider uppercase text-[#8A661C] hover:text-[#705215] border-b border-amber-500/60 pb-0.5 transition-colors self-start font-bold"
+              className="inline-flex items-center space-x-1.5 sm:space-x-2 text-xs sm:text-sm tracking-wider uppercase text-[#8A661C] hover:text-[#705215] border-b border-amber-500/60 pb-0.5 transition-colors self-start font-bold"
             >
               <span>Private Inquiries</span>
               <Compass className="w-3.5 h-3.5" />
@@ -108,9 +107,9 @@ export default function Footer({ onOpenInquiry, onOpenBooking }) {
             {onOpenBooking && (
               <button
                 onClick={onOpenBooking}
-                className="inline-flex items-center space-x-2 text-xs sm:text-sm tracking-wider uppercase text-stone-800 hover:text-stone-900 border-b border-stone-400/60 pb-0.5 transition-colors self-start font-mono font-semibold"
+                className="inline-flex items-center space-x-1.5 sm:space-x-2 text-xs sm:text-sm tracking-wider uppercase text-stone-800 hover:text-stone-900 border-b border-stone-400/60 pb-0.5 transition-colors self-start font-mono font-semibold"
               >
-                <span>Direct Suite Reservations</span>
+                <span>Direct Suites</span>
                 <Bed className="w-3.5 h-3.5 text-[#B48A28]" />
               </button>
             )}
@@ -120,9 +119,9 @@ export default function Footer({ onOpenInquiry, onOpenBooking }) {
       </div>
 
       {/* BOTTOM LEGAL ROW */}
-      <div className="max-w-7xl mx-auto mt-12 sm:mt-14 pt-6 sm:pt-8 border-t border-stone-300/70 flex flex-col sm:flex-row items-center justify-between text-xs text-stone-600 font-sans">
+      <div className="max-w-7xl mx-auto mt-6 sm:mt-12 pt-4 sm:pt-6 border-t border-stone-300/70 flex flex-col sm:flex-row items-center justify-between text-[11px] sm:text-xs text-stone-600 font-sans gap-2 text-center sm:text-left">
         <p>© {currentYear} {POLARIS_CONFIG.hotelName} Hotel Kalam. All Rights Reserved.</p>
-        <p className="mt-2 sm:mt-0 font-mono text-xs text-stone-600 font-medium">
+        <p className="font-mono text-[11px] sm:text-xs text-stone-600 font-medium">
           Redefining Tourism in Kalam Valley
         </p>
       </div>

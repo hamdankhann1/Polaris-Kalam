@@ -1,5 +1,6 @@
 import React from 'react';
-import { X, Bed, Calendar, User, Sparkles, CheckCircle2, ShieldCheck, Clock, MapPin, Tag, ArrowRight } from 'lucide-react';
+import { X, Bed, Calendar, User, Sparkles, CheckCircle2, ShieldCheck, Clock, MapPin, Tag, ArrowRight, MessageSquare, Phone } from 'lucide-react';
+import { BookingRequestService } from '../../services/bookingRequestService';
 
 /**
  * =========================================================================
@@ -7,9 +8,16 @@ import { X, Bed, Calendar, User, Sparkles, CheckCircle2, ShieldCheck, Clock, Map
  * =========================================================================
  * 
  * Shows comprehensive room specifications, current status details,
- * and operational notes.
+ * scheduled reservations, and pending booking inquiries.
  */
-export default function RoomDetailsModal({ isOpen, onClose, room, onTriggerStatusChange }) {
+export default function RoomDetailsModal({ 
+  isOpen, 
+  onClose, 
+  room, 
+  onTriggerStatusChange,
+  bookingRequests = [],
+  onApproveRequest
+}) {
   if (!isOpen || !room) return null;
 
   const statusConfig = {
@@ -155,6 +163,101 @@ export default function RoomDetailsModal({ isOpen, onClose, room, onTriggerStatu
                   Last sanitized and inspected: {new Date(room.lastCleanedAt || room.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric' })}.
                   This room is currently listed as available for booking inquiries.
                 </p>
+              </div>
+            )}
+          </div>
+
+          {/* PENDING & SCHEDULED RESERVATIONS FOR THIS SUITE */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-mono tracking-widest uppercase text-stone-500">
+                Scheduled Reservations & Inquiries ({bookingRequests.filter((r) => r.roomId === room.id).length + (Array.isArray(room.bookedRanges) ? room.bookedRanges.length : 0)})
+              </span>
+              {bookingRequests.filter((r) => r.roomId === room.id && r.status === 'pending').length > 0 && (
+                <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 font-bold border border-amber-300">
+                  {bookingRequests.filter((r) => r.roomId === room.id && r.status === 'pending').length} Pending Review
+                </span>
+              )}
+            </div>
+
+            {/* List of pending inquiries */}
+            {bookingRequests.filter((r) => r.roomId === room.id).length === 0 && (!room.bookedRanges || room.bookedRanges.length === 0) ? (
+              <div className="p-3 rounded-lg bg-stone-50 border border-stone-200 text-xs text-stone-600 font-mono text-center">
+                No active reservations or pending inquiries on this suite.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {/* 1. Pending Inquiries */}
+                {bookingRequests.filter((r) => r.roomId === room.id).map((req) => {
+                  const isPending = req.status === 'pending';
+                  const isApproved = req.status === 'approved';
+
+                  return (
+                    <div 
+                      key={req.id}
+                      className={`p-3 rounded-lg border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${
+                        isPending ? 'bg-amber-50/80 border-amber-300' : 'bg-stone-50 border-stone-200'
+                      }`}
+                    >
+                      <div className="space-y-0.5">
+                        <div className="flex items-center space-x-2">
+                          <span className="font-semibold text-stone-900">{req.guestName}</span>
+                          <span className={`text-[9.5px] font-mono uppercase px-1.5 py-0.2 rounded font-bold ${
+                            isPending ? 'bg-amber-200 text-amber-900' : 'bg-emerald-100 text-emerald-800'
+                          }`}>
+                            {req.status.toUpperCase()}
+                          </span>
+                        </div>
+                        <div className="text-[11px] font-mono text-stone-600">
+                          {req.checkIn} → {req.checkOut} ({req.nights}N) • {req.guests}
+                        </div>
+                        {req.phone && (
+                          <div className="text-[10.5px] font-mono text-emerald-700 flex items-center space-x-1">
+                            <Phone className="w-3 h-3" />
+                            <span>{req.phone}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex items-center space-x-1.5 shrink-0 self-end sm:self-auto">
+                        <a
+                          href={BookingRequestService.generateWhatsAppLink(req)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-[10.5px] font-mono uppercase font-bold transition-all flex items-center space-x-1"
+                        >
+                          <MessageSquare className="w-3 h-3" />
+                          <span>WhatsApp</span>
+                        </a>
+                        {isPending && onApproveRequest && (
+                          <button
+                            onClick={() => {
+                              onApproveRequest(req);
+                              onClose();
+                            }}
+                            className="px-2.5 py-1 rounded bg-rose-600 hover:bg-rose-500 text-white text-[10.5px] font-mono uppercase font-bold transition-all flex items-center space-x-1"
+                          >
+                            <CheckCircle2 className="w-3 h-3" />
+                            <span>Approve</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* 2. Coordinated Calendar Blocks */}
+                {Array.isArray(room.bookedRanges) && room.bookedRanges.map((b, idx) => (
+                  <div key={b.id || idx} className="p-2.5 rounded-lg bg-stone-50 border border-stone-200 text-xs flex items-center justify-between">
+                    <div>
+                      <span className="font-medium text-stone-900">{b.guestName || 'VIP Reservation'}</span>
+                      <span className="text-[10px] text-stone-500 block font-mono">{b.source || 'Scheduled Block'}</span>
+                    </div>
+                    <span className="font-mono text-rose-700 font-medium text-[11px]">
+                      {b.checkIn} → {b.checkOut}
+                    </span>
+                  </div>
+                ))}
               </div>
             )}
           </div>

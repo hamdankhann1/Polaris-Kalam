@@ -427,12 +427,16 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
     const isBooked = room.status === 'booked';
     const isCleaning = room.status === 'in cleaning';
     const isTopSuite = room.floor === 'Top Suite';
+    const roomPendingRequests = bookingRequests.filter((r) => r.roomId === room.id && r.status === 'pending');
+    const hasPendingInquiry = roomPendingRequests.length > 0;
 
     return (
       <div
         key={room.id}
         className={`relative rounded-xl bg-white border transition-all duration-300 flex flex-col justify-between overflow-hidden group shadow-2xs ${
-          isTopSuite
+          hasPendingInquiry
+            ? 'border-amber-400 ring-2 ring-amber-400/50 shadow-md shadow-amber-900/10'
+            : isTopSuite
             ? 'border-[#B48A28]/60 shadow-[0_4px_20px_rgba(180,138,40,0.12)] ring-1 ring-[#B48A28]/30'
             : isBooked
             ? 'border-rose-200 hover:border-rose-300 hover:shadow-md'
@@ -456,6 +460,12 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
                 {isTopSuite && <Crown className="w-3 h-3 text-[#B48A28]" />}
                 <span>{room.floor}</span>
               </span>
+
+              {hasPendingInquiry && (
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-100 border border-amber-300 text-amber-900 font-bold animate-pulse">
+                  Request Waiting
+                </span>
+              )}
             </div>
 
             {/* Current Status Pill */}
@@ -543,6 +553,40 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
                   <CheckCircle2 className="w-3 h-3 text-emerald-600" />
                   <span>Mark Cleaned & Available</span>
                 </button>
+              </div>
+            )}
+
+            {/* PENDING RESERVATION INQUIRY WAITING ON THIS ROOM */}
+            {hasPendingInquiry && (
+              <div className="p-3 rounded-lg bg-amber-50 border border-amber-300 space-y-2 text-xs mb-2 shadow-2xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-amber-950 font-bold flex items-center space-x-1.5 text-[11px] font-mono uppercase tracking-wider">
+                    <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
+                    <span>Inquiry Waiting Review ({roomPendingRequests.length})</span>
+                  </span>
+                </div>
+                <div className="text-[11.5px] text-stone-900 font-sans leading-tight">
+                  <strong className="font-semibold text-stone-900">{roomPendingRequests[0].guestName}</strong>: <span className="font-mono text-amber-950 font-bold">{roomPendingRequests[0].checkIn} → {roomPendingRequests[0].checkOut}</span> ({roomPendingRequests[0].nights}N)
+                </div>
+                <div className="flex items-center space-x-1.5 pt-1">
+                  <a
+                    href={BookingRequestService.generateWhatsAppLink(roomPendingRequests[0])}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => handleMarkContacted(roomPendingRequests[0].id)}
+                    className="flex-1 py-1.5 px-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[10.5px] font-mono uppercase font-bold transition-all text-center flex items-center justify-center space-x-1 shadow-2xs"
+                  >
+                    <MessageSquare className="w-3 h-3" />
+                    <span>WhatsApp</span>
+                  </a>
+                  <button
+                    onClick={() => handleApproveBookingRequest(roomPendingRequests[0])}
+                    className="flex-1 py-1.5 px-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-[10.5px] font-mono uppercase font-bold transition-all text-center flex items-center justify-center space-x-1 shadow-2xs"
+                  >
+                    <CheckCircle2 className="w-3 h-3" />
+                    <span>Approve & Lock</span>
+                  </button>
+                </div>
               </div>
             )}
 
@@ -1034,6 +1078,38 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
               </div>
             </div>
 
+            {/* PENDING RESERVATION INQUIRIES ALERT BANNER */}
+            {pendingRequestsCount > 0 && (
+              <div className="p-4 sm:p-5 rounded-2xl bg-amber-50 border-2 border-amber-300 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-stone-900 animate-fadeIn">
+                <div className="flex items-start sm:items-center space-x-3.5">
+                  <div className="w-10 h-10 rounded-full bg-rose-500 text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-sm animate-pulse">
+                    {pendingRequestsCount}
+                  </div>
+                  <div>
+                    <div className="flex items-center space-x-2">
+                      <span className="text-xs font-mono font-bold uppercase tracking-wider text-rose-800">
+                        Action Required • {pendingRequestsCount} Pending Guest {pendingRequestsCount === 1 ? 'Inquiry' : 'Inquiries'}
+                      </span>
+                      <span className="text-[10px] font-mono px-2 py-0.2 rounded bg-amber-200 text-amber-900 font-bold">
+                        polarishotels.pk/booking
+                      </span>
+                    </div>
+                    <p className="text-xs sm:text-sm text-stone-700 mt-0.5 font-normal">
+                      New reservation requests have been submitted. Review details, chat with guests directly on WhatsApp, and click "Approve" to lock rooms.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setActiveSection('requests')}
+                  className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-mono uppercase tracking-wider font-bold transition-all shrink-0 flex items-center justify-center space-x-2 shadow-sm"
+                >
+                  <MessageSquare className="w-4 h-4" />
+                  <span>Review Inquiries Queue ({pendingRequestsCount})</span>
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+
             {/* KPI SUMMARY STATS CARDS */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="p-5 rounded-xl bg-white border border-stone-200 shadow-2xs relative overflow-hidden">
@@ -1395,6 +1471,7 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
         isOpen={newBookingModalOpen}
         onClose={() => setNewBookingModalOpen(false)}
         rooms={rooms}
+        bookingRequests={bookingRequests}
         onSaveBooking={handleConfirmStatus}
       />
 
@@ -1406,6 +1483,8 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
           setActiveRoomForDetails(null);
         }}
         room={activeRoomForDetails}
+        bookingRequests={bookingRequests}
+        onApproveRequest={handleApproveBookingRequest}
         onTriggerStatusChange={handleInitiateStatusChange}
       />
 
@@ -1414,6 +1493,7 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
         isOpen={addRequestModalOpen}
         onClose={() => setAddRequestModalOpen(false)}
         rooms={rooms}
+        bookingRequests={bookingRequests}
         onSaveRequest={handleCreateBookingRequest}
       />
 
