@@ -367,6 +367,8 @@ export const RoomService = {
           dbConnected: Boolean(json.dbConnected || json.source === 'mongodb'),
           source: json.source || (json.dbConnected ? 'mongodb' : 'memory'),
           dbError: json.dbError || null,
+          envDetected: Boolean(json.envDetected),
+          envKey: json.envKey || null,
           lastSyncedAt: new Date().toISOString()
         };
 
@@ -376,9 +378,27 @@ export const RoomService = {
           notifyListeners(cleaned);
           return [...cleaned];
         }
+      } else {
+        const errJson = await res.json().catch(() => null);
+        lastDbConnection = {
+          dbConnected: false,
+          source: 'error',
+          dbError: errJson?.error || `HTTP ${res.status} ${res.statusText}`,
+          envDetected: false,
+          envKey: null,
+          lastSyncedAt: new Date().toISOString()
+        };
       }
     } catch (e) {
       console.warn('[RoomService] Database API unreachable:', e);
+      lastDbConnection = {
+        dbConnected: false,
+        source: 'network_error',
+        dbError: e.message || 'Network request failed',
+        envDetected: false,
+        envKey: null,
+        lastSyncedAt: new Date().toISOString()
+      };
     }
 
     if (cachedRooms.length > 0) {

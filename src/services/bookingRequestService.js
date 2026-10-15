@@ -119,9 +119,27 @@ export const BookingRequestService = {
           notifyListeners(cloudRequests);
           return [...cloudRequests];
         }
+      } else {
+        const errJson = await res.json().catch(() => null);
+        lastDbConnection = {
+          dbConnected: false,
+          source: 'error',
+          dbError: errJson?.error || `HTTP ${res.status} ${res.statusText}`,
+          envDetected: false,
+          envKey: null,
+          lastSyncedAt: new Date().toISOString()
+        };
       }
     } catch (err) {
       console.warn('[BookingRequestService] Database API unreachable:', err);
+      lastDbConnection = {
+        dbConnected: false,
+        source: 'network_error',
+        dbError: err.message || 'Network request failed',
+        envDetected: false,
+        envKey: null,
+        lastSyncedAt: new Date().toISOString()
+      };
     }
 
     return [...cachedRequests];

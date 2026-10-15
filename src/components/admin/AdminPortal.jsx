@@ -805,10 +805,9 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
             {/* Real-Time Database Connection Status Pill & Sync Button */}
             <button
               onClick={() => {
+                handleManualSync();
                 if (!dbStatus.dbConnected) {
                   setDbModalOpen(true);
-                } else {
-                  handleManualSync();
                 }
               }}
               disabled={isSyncing}
@@ -1666,15 +1665,24 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
                 </div>
               )}
 
-              <div className="pt-2 flex justify-end space-x-2">
+              <div className="pt-2 flex justify-end items-center space-x-2">
                 <button
-                  onClick={() => {
-                    handleManualSync();
-                    setDbModalOpen(false);
-                  }}
-                  className="px-4 py-2 rounded-lg bg-[#B48A28] hover:bg-[#96721E] text-white font-mono text-xs font-semibold shadow-xs transition-colors"
+                  type="button"
+                  onClick={() => setDbModalOpen(false)}
+                  className="px-3.5 py-2 rounded-lg border border-stone-200 text-stone-600 hover:text-stone-900 hover:bg-stone-100 font-mono text-xs font-semibold transition-colors"
                 >
-                  Test Connection & Sync
+                  Close
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await handleManualSync();
+                  }}
+                  disabled={isSyncing}
+                  className="px-4 py-2 rounded-lg bg-[#B48A28] hover:bg-[#96721E] text-white font-mono text-xs font-semibold shadow-xs transition-colors flex items-center space-x-1.5"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                  <span>{isSyncing ? 'Testing...' : 'Test Connection Again'}</span>
                 </button>
               </div>
             </div>

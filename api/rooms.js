@@ -209,24 +209,53 @@ export function getMongoConfig() {
     { name: 'MONGODB_URI', val: process.env.MONGODB_URI },
     { name: 'MONGO_URI', val: process.env.MONGO_URI },
     { name: 'MONGODB_URL', val: process.env.MONGODB_URL },
+    { name: 'MONGO_URL', val: process.env.MONGO_URL },
     { name: 'DATABASE_URL', val: process.env.DATABASE_URL },
-    { name: 'VITE_MONGODB_URI', val: process.env.VITE_MONGODB_URI }
+    { name: 'DATABASE_URI', val: process.env.DATABASE_URI },
+    { name: 'MONGODB_CONNECTION_STRING', val: process.env.MONGODB_CONNECTION_STRING },
+    { name: 'MONGODB_ATLAS_URI', val: process.env.MONGODB_ATLAS_URI },
+    { name: 'VITE_MONGODB_URI', val: process.env.VITE_MONGODB_URI },
+    { name: 'VITE_MONGO_URI', val: process.env.VITE_MONGO_URI }
   ];
 
+  // 1. Check known candidate keys
   for (const c of candidates) {
     if (c.val && typeof c.val === 'string' && c.val.trim().length > 0) {
-      const cleanUri = c.val.trim().replace(/^["']|["']$/g, '');
+      let raw = c.val.trim();
+      const uriMatch = raw.match(/(mongodb(?:\+srv)?:\/\/[^\s"']+)/);
+      const cleanUri = uriMatch ? uriMatch[1] : raw.replace(/^["']|["']$/g, '');
       return { uri: cleanUri, keyName: c.name, hasEnv: true };
     }
   }
 
-  return { uri: null, keyName: null, hasEnv: false };
+  // 2. Scan entire process.env for any variable containing a mongodb connection string
+  for (const [key, val] of Object.entries(process.env)) {
+    if (typeof val === 'string' && (val.includes('mongodb+srv://') || val.includes('mongodb://'))) {
+      const uriMatch = val.match(/(mongodb(?:\+srv)?:\/\/[^\s"']+)/);
+      if (uriMatch) {
+        return { uri: uriMatch[1], keyName: key, hasEnv: true };
+      }
+    }
+  }
+
+  // Collect any similar keys found in process.env for diagnostic hints
+  const similarKeys = Object.keys(process.env).filter(
+    (k) => /mongo|database|db_url/i.test(k) && !k.startsWith('npm_')
+  );
+
+  return {
+    uri: null,
+    keyName: null,
+    hasEnv: false,
+    hint: similarKeys.length > 0 ? `Found related keys in Vercel: ${similarKeys.join(', ')}` : null
+  };
 }
 
 async function getDatabase() {
   const config = getMongoConfig();
   if (!config.hasEnv || !config.uri) {
-    return { db: null, error: 'No MongoDB URI found in environment variables (checked MONGODB_URI, MONGO_URI, DATABASE_URL, MONGODB_URL)', config };
+    const hintMsg = config.hint ? ` (${config.hint})` : '';
+    return { db: null, error: `No MongoDB URI found in environment variables${hintMsg}. Please add MONGODB_URI in Vercel.`, config };
   }
 
   if (cachedClient && cachedDb) {
