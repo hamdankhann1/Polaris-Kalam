@@ -851,13 +851,30 @@ export const RoomService = {
     }
     if (!current) throw new Error('Room not found');
 
+    const nights = Number(range.nights) || Math.max(1, Math.ceil(Math.abs(new Date(range.checkOut) - new Date(range.checkIn)) / 86400000)) || 1;
+    const price = Number(range.pricePKR) || current.pricePKR || 45000;
+
     const newEntry = {
-      id: 'b-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+      id: range.id || ('b-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6)),
       checkIn: range.checkIn,
       checkOut: range.checkOut,
+      actualCheckIn: range.actualCheckIn || range.checkIn,
+      actualCheckOut: range.actualCheckOut || range.checkOut,
       guestName: range.guestName || 'VIP Guest',
+      phone: range.phone || '',
+      email: range.email || '',
+      nights: nights,
+      pricePKR: price,
+      amount: price * nights,
+      bookingRef: range.bookingRef || ('PK-' + Math.floor(1000 + Math.random() * 9000)),
       source: range.source || 'Manual Calendar Block',
-      createdAt: new Date().toISOString()
+      notes: range.notes || '',
+      checkedIn: Boolean(range.checkedIn),
+      checkedInAt: range.checkedInAt || null,
+      checkedOut: Boolean(range.checkedOut),
+      checkedOutAt: range.checkedOutAt || null,
+      status: range.status || 'confirmed',
+      createdAt: range.createdAt || new Date().toISOString()
     };
 
     const updatedRanges = Array.isArray(current.bookedRanges) ? [...current.bookedRanges, newEntry] : [newEntry];
@@ -879,6 +896,74 @@ export const RoomService = {
 
     await this.getRooms(true);
     return newEntry;
+  },
+
+  /**
+   * Check in a guest on a specific room reservation -> updates status and marks room occupied
+   */
+  async checkInGuest(roomId, rangeId, checkInData = {}) {
+    let current = cachedRooms.find((r) => r.id === roomId);
+    if (!current) {
+      const fresh = await this.getRooms();
+      current = fresh.find((r) => r.id === roomId);
+    }
+    if (!current) throw new Error('Room not found');
+
+    const ranges = Array.isArray(current.bookedRanges) ? [...current.bookedRanges] : [];
+    const idx = ranges.findIndex((b) => b.id === rangeId);
+    let targetRange = idx !== -1 ? ranges[idx] : ranges[0];
+
+    const actualCheckIn = checkInData.actualCheckIn || checkInData.checkIn || new Date().toISOString().split('T')[0];
+    const expectedCheckOut = checkInData.expectedCheckOut || checkInData.checkOut || targetRange?.checkOut || actualCheckIn;
+    const nowIso = new Date().toISOString();
+
+    const updatedEntry = {
+      ...(targetRange || {}),
+      id: targetRange?.id || rangeId,
+      guestName: checkInData.guestName || targetRange?.guestName || 'VIP Guest',
+      phone: checkInData.phone || targetRange?.phone || '',
+      actualCheckIn: actualCheckIn,
+      checkIn: actualCheckIn,
+      checkOut: expectedCheckOut,
+      checkedIn: true,
+      checkedInAt: nowIso,
+      status: 'checked-in',
+      checkInRemarks: checkInData.remarks || '',
+      updatedAt: nowIso
+    };
+
+    if (idx !== -1) {
+      ranges[idx] = updatedEntry;
+    } else {
+      ranges.push(updatedEntry);
+    }
+
+    const payload = {
+      id: roomId,
+      bookedRanges: ranges,
+      activeBooking: updatedEntry,
+      status: 'booked',
+      updatedAt: nowIso
+    };
+
+    const res = await fetch('/api/rooms', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to check in guest in database.');
+    }
+
+    logAudit('GUEST_CHECKED_IN', roomId, current.roomNumber, {
+      guestName: updatedEntry.guestName,
+      checkIn: actualCheckIn
+    });
+
+    await this.getRooms(true);
+    return updatedEntry;
   },
 
   /**

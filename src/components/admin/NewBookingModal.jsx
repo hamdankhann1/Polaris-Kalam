@@ -25,7 +25,7 @@ export default function NewBookingModal({ isOpen, onClose, rooms, onSaveBooking,
   const [checkIn, setCheckIn] = useState(defaultStart);
   const [checkOut, setCheckOut] = useState(defaultEnd);
   const [source, setSource] = useState('Other Hotel CMS (Sync)');
-  const [queueStatus, setQueueStatus] = useState('pending'); // 'pending' increments the red notification badge!
+  const [queueStatus, setQueueStatus] = useState('approved'); // Default to Confirmed & Locked
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -251,8 +251,8 @@ export default function NewBookingModal({ isOpen, onClose, rooms, onSaveBooking,
                 onChange={(e) => setQueueStatus(e.target.value)}
                 className="w-full bg-stone-50 border border-stone-300 rounded-lg px-3.5 py-2.5 text-sm text-stone-900 focus:outline-none focus:border-rose-500 focus:bg-white transition-colors font-mono"
               >
-                <option value="pending">🔴 Pending Review (Increments Badge)</option>
-                <option value="approved">🟢 Pre-Approved & Locked</option>
+                <option value="approved">🟢 Confirmed & Locked (Approved)</option>
+                <option value="pending">🔴 Pending Review (Inquiry)</option>
               </select>
             </div>
           </div>

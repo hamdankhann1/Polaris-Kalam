@@ -29,7 +29,9 @@ import {
   Mail,
   Send,
   RefreshCw,
-  Building2
+  Building2,
+  LogOut,
+  LogIn
 } from 'lucide-react';
 import { RoomService } from '../../services/roomService';
 import { CategoryService } from '../../services/categoryService';
@@ -46,6 +48,8 @@ import ClearAllRoomsModal from './ClearAllRoomsModal';
 import AddBookingRequestModal from './AddBookingRequestModal';
 import CategoryManagerModal from './CategoryManagerModal';
 import FloorManagerModal from './FloorManagerModal';
+import CheckInModal from './CheckInModal';
+import CheckOutModal from './CheckOutModal';
 
 /**
  * =========================================================================
@@ -111,6 +115,13 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
   const [newBookingModalOpen, setNewBookingModalOpen] = useState(false);
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
   const [activeRoomForDetails, setActiveRoomForDetails] = useState(null);
+
+  // Guest Check-In & Check-Out Modal States
+  const [checkInModalOpen, setCheckInModalOpen] = useState(false);
+  const [checkInTarget, setCheckInTarget] = useState({ booking: null, room: null });
+  const [checkoutModalOpen, setCheckoutModalOpen] = useState(false);
+  const [checkoutTarget, setCheckoutTarget] = useState({ booking: null, room: null });
+  const [requestFilter, setRequestFilter] = useState('all'); // 'all' | 'confirmed' | 'pending' | 'completed'
 
   // Toast Notification
   const [toastMessage, setToastMessage] = useState('');
@@ -302,9 +313,9 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
           notes: meta.notes || ''
         });
 
-        // If guest details are provided, synchronize into inquiries queue
+        // If guest details are provided, synchronize into inquiries queue as confirmed
         if (meta.guestName && targetRoom) {
-          const qStatus = meta.queueStatus || 'pending';
+          const qStatus = meta.queueStatus || 'approved';
           await BookingRequestService.createRequest({
             guestName: meta.guestName,
             phone: meta.phone || '+92 300 0000000',
@@ -509,27 +520,31 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
 
   const handleApproveBookingRequest = async (request) => {
     try {
-      // 1. Lock only the reserved dates on the calendar
+      // 1. Lock only the reserved dates on the room calendar
       await RoomService.addBookedRange(request.roomId, {
         guestName: request.guestName,
+        phone: request.phone,
+        email: request.email,
         checkIn: request.checkIn,
         checkOut: request.checkOut,
-        source: 'polarishotels.pk/booking (WhatsApp Confirmed)',
-        notes: `Guest WhatsApp: ${request.phone} • Email: ${request.email}. Special notes: ${request.notes}`
+        nights: request.nights,
+        pricePKR: request.pricePKR,
+        source: 'polarishotels.pk/booking (Confirmed & Locked)',
+        notes: `Guest WhatsApp: ${request.phone} • Email: ${request.email}. Special notes: ${request.notes || ''}`
       });
 
-      // 2. Update request status to 'approved'
-      await BookingRequestService.updateStatus(request.id, 'approved', 'Approved by Front Desk & Dates Locked on Website Calendar');
+      // 2. Delete the inquiry from bookingRequests queue so it does not linger or re-lock
+      await BookingRequestService.deleteRequest(request.id);
 
       // Refresh to guarantee state is fresh
       const [freshRooms, freshRequests] = await Promise.all([
-        RoomService.getRooms(),
-        BookingRequestService.getRequests()
+        RoomService.getRooms(true),
+        BookingRequestService.getRequests(true)
       ]);
       setRooms(freshRooms);
       setBookingRequests(freshRequests);
 
-      triggerToast(`Reservation Approved! Dates ${request.checkIn} to ${request.checkOut} locked on calendar for Room #${request.roomNumber}. Suite remains available for other dates.`);
+      triggerToast(`Dates ${request.checkIn} to ${request.checkOut} locked on Room #${request.roomNumber}. Converted to Confirmed Reservation.`);
     } catch (err) {
       console.error('Error approving booking request:', err);
       triggerToast('Error approving request: ' + err.message);
@@ -538,55 +553,50 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
 
   const handleMarkContacted = async (requestId) => {
     await BookingRequestService.updateStatus(requestId, 'contacted');
-    const freshRequests = await BookingRequestService.getRequests();
+    const freshRequests = await BookingRequestService.getRequests(true);
     setBookingRequests(freshRequests);
     triggerToast('Request marked as Contacted via WhatsApp.');
   };
 
   const handleDeclineRequest = async (requestId) => {
-    if (window.confirm('Are you sure you want to decline / archive this request?')) {
-      const targetReq = bookingRequests.find((r) => r.id === requestId);
+    if (window.confirm('Are you sure you want to decline / archive this inquiry?')) {
+      // Note: Only updates inquiry status. Separate operation from room calendar locks.
       await BookingRequestService.updateStatus(requestId, 'declined');
 
-      // If this request had locked dates on the room, remove the date lock on the room too!
-      if (targetReq && targetReq.roomId && targetReq.checkIn && targetReq.checkOut) {
-        const targetRoom = rooms.find((r) => r.id === targetReq.roomId);
-        if (targetRoom && Array.isArray(targetRoom.bookedRanges)) {
-          const matchingRange = targetRoom.bookedRanges.find(
-            (b) => b.checkIn === targetReq.checkIn && b.checkOut === targetReq.checkOut
-          );
-          if (matchingRange) {
-            await RoomService.removeBookedRange(targetRoom.id, matchingRange.id);
-          }
-        }
-      }
-
-      const [freshRooms, freshRequests] = await Promise.all([
-        RoomService.getRooms(true),
-        BookingRequestService.getRequests(true)
-      ]);
-      setRooms(freshRooms);
+      const freshRequests = await BookingRequestService.getRequests(true);
       setBookingRequests(freshRequests);
-      triggerToast('Booking request declined and dates unlocked.');
+      triggerToast('Booking inquiry marked as declined.');
     }
   };
 
   const handleDeleteRequest = async (requestId) => {
-    if (window.confirm('Permanently remove this booking inquiry from the CMS database?')) {
-      const targetReq = bookingRequests.find((r) => r.id === requestId);
+    if (window.confirm('Permanently remove this booking inquiry from the requests queue?')) {
+      // Note: Only deletes inquiry record. Separate operation from room calendar locks.
       await BookingRequestService.deleteRequest(requestId);
 
-      // If this request had locked dates on the room, remove the date lock on the room too!
-      if (targetReq && targetReq.roomId && targetReq.checkIn && targetReq.checkOut) {
-        const targetRoom = rooms.find((r) => r.id === targetReq.roomId);
-        if (targetRoom && Array.isArray(targetRoom.bookedRanges)) {
-          const matchingRange = targetRoom.bookedRanges.find(
-            (b) => b.checkIn === targetReq.checkIn && b.checkOut === targetReq.checkOut
-          );
-          if (matchingRange) {
-            await RoomService.removeBookedRange(targetRoom.id, matchingRange.id);
-          }
-        }
+      const freshRequests = await BookingRequestService.getRequests(true);
+      setBookingRequests(freshRequests);
+      triggerToast('Booking inquiry removed from queue.');
+    }
+  };
+
+  // --- CHECK-IN & ARRIVAL HANDLERS ---
+  const handleOpenCheckIn = (bookingOrRange, targetRoom = null) => {
+    const matchingRoom = targetRoom || rooms.find((r) => r.id === bookingOrRange.roomId || r.roomNumber === bookingOrRange.roomNumber);
+    setCheckInTarget({ booking: bookingOrRange, room: matchingRoom });
+    setCheckInModalOpen(true);
+  };
+
+  const handleConfirmCheckIn = async ({ booking, room, actualCheckIn, expectedCheckOut, remarks }) => {
+    try {
+      if (room) {
+        await RoomService.checkInGuest(room.id, booking?.id, {
+          actualCheckIn,
+          expectedCheckOut,
+          guestName: booking?.guestName,
+          phone: booking?.phone,
+          remarks
+        });
       }
 
       const [freshRooms, freshRequests] = await Promise.all([
@@ -595,13 +605,224 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
       ]);
       setRooms(freshRooms);
       setBookingRequests(freshRequests);
-      triggerToast('Booking inquiry permanently removed from database.');
+
+      triggerToast(`✓ Guest ${booking?.guestName || 'VIP Guest'} checked in to Room #${room?.roomNumber || booking?.roomNumber}. Room marked OCCUPIED.`);
+    } catch (err) {
+      console.error('Error during check-in:', err);
+      triggerToast('Error during check-in: ' + err.message);
     }
   };
+
+  // --- CHECK-OUT & DEPARTURE HANDLERS ---
+  const handleOpenCheckout = (booking) => {
+    const matchingRoom = rooms.find((r) => r.id === booking.roomId || r.roomNumber === booking.roomNumber);
+    setCheckoutTarget({ booking, room: matchingRoom });
+    setCheckoutModalOpen(true);
+  };
+
+  const handleOpenCheckoutFromRange = (room, range) => {
+    setCheckoutTarget({
+      booking: {
+        id: range.id,
+        guestName: range.guestName || 'VIP Guest',
+        phone: range.phone || '',
+        email: range.email || '',
+        roomNumber: room.roomNumber,
+        roomName: room.name,
+        roomId: room.id,
+        checkIn: range.actualCheckIn || range.checkIn,
+        checkOut: range.actualCheckOut || range.checkOut,
+        actualCheckIn: range.actualCheckIn || range.checkIn,
+        actualCheckOut: range.actualCheckOut || range.checkOut,
+        nights: range.nights || Math.max(1, Math.ceil(Math.abs(new Date(range.checkOut) - new Date(range.checkIn)) / 86400000)) || 1,
+        pricePKR: range.pricePKR || room.pricePKR || 45000,
+        bookingRef: range.bookingRef || 'PK-' + Math.floor(1000 + Math.random() * 9000),
+        status: range.checkedIn ? 'checked-in' : 'approved',
+        fromRoomRange: true
+      },
+      room
+    });
+    setCheckoutModalOpen(true);
+  };
+
+  const handleConfirmCheckOut = async ({
+    booking,
+    room,
+    checkIn,
+    checkOut,
+    nights,
+    nightlyRate,
+    extraCharges,
+    discount,
+    totalAmount,
+    paymentMethod,
+    moveToCleaning,
+    departureNotes
+  }) => {
+    try {
+      const revDate = checkOut || new Date().toISOString().split('T')[0];
+      const startStayDate = checkIn || booking?.checkIn || revDate;
+      const stayNights = Number(nights) || 1;
+      const rate = Number(nightlyRate) || room?.pricePKR || 45000;
+      const finalRevenue = Number(totalAmount) || (stayNights * rate);
+
+      // 1. Synchronize checkout revenue to MongoDB Atlas revenue ledger (Master Look)
+      try {
+        await fetch('/api/revenue', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-cms-source': 'polaris-cms'
+          },
+          body: JSON.stringify({
+            source: 'polaris-cms',
+            bookingId: booking?.id || null,
+            bookingRef: booking?.bookingRef || `CO-${Math.floor(1000 + Math.random() * 9000)}`,
+            guestName: booking?.guestName || room?.activeBooking?.guestName || 'Departed Guest',
+            phone: booking?.phone || '',
+            roomNumber: room?.roomNumber || booking?.roomNumber || '',
+            roomName: room?.name || booking?.roomName || 'Polaris Suite',
+            category: room?.category || booking?.category || 'Executive Suite',
+            floor: room?.floor || booking?.floor || '',
+            checkIn: startStayDate,
+            checkOut: revDate,
+            nights: stayNights,
+            nightlyRate: rate,
+            amount: finalRevenue,
+            paymentMethod: paymentMethod || 'Cash at Desk',
+            status: 'paid',
+            date: revDate,
+            notes: `Checkout completed: ${departureNotes || 'Keys handed to desk.'}${Number(extraCharges) ? ` (Extras: PKR ${extraCharges})` : ''}${Number(discount) ? ` (Discount: PKR ${discount})` : ''}`
+          })
+        });
+      } catch (revErr) {
+        console.warn('Revenue sync warning:', revErr);
+      }
+
+      // 2. Remove the locked date range from room calendar
+      if (room) {
+        const targetRange = room.bookedRanges?.find((b) =>
+          b.id === booking?.id ||
+          (b.checkIn === startStayDate && b.checkOut === revDate)
+        ) || room.bookedRanges?.[0];
+
+        if (targetRange && targetRange.id) {
+          await RoomService.removeBookedRange(room.id, targetRange.id);
+        }
+
+        // 3. Update room status to 'in cleaning' (IN TURNOVER) if requested
+        if (moveToCleaning) {
+          await RoomService.updateStatus(room.id, 'in cleaning', {
+            assignedTo: 'Turnover Duty Team',
+            priority: 'Departure Turnover - Room Ready Soon',
+            notes: `Guest ${booking?.guestName || 'VIP Guest'} checked out on ${revDate}. ${departureNotes || ''}`
+          });
+        }
+      }
+
+      // 4. Update booking status in database to 'completed' if a booking inquiry exists
+      if (booking && booking.id && !booking.fromRoomRange) {
+        await BookingRequestService.updateStatus(
+          booking.id,
+          'completed',
+          departureNotes || 'Guest checked out from Front Desk',
+          { checkedOutAt: new Date().toISOString() }
+        ).catch(() => {});
+      }
+
+      // 5. Instantly refresh CMS
+      const [freshRooms, freshRequests] = await Promise.all([
+        RoomService.getRooms(true),
+        BookingRequestService.getRequests(true)
+      ]);
+      setRooms(freshRooms);
+      setBookingRequests(freshRequests);
+
+      triggerToast(`✓ Guest ${booking?.guestName || 'Guest'} checked out of Room #${room?.roomNumber || booking?.roomNumber}. Revenue PKR ${finalRevenue.toLocaleString()} synced to Master Look.`);
+    } catch (err) {
+      console.error('Error completing checkout:', err);
+      triggerToast('Error during check-out: ' + err.message);
+    }
+  };
+
+  // Aggregate all confirmed reservations from room booked ranges + any confirmed inquiries
+  const allConfirmedReservations = useMemo(() => {
+    const list = [];
+    rooms.forEach((room) => {
+      if (Array.isArray(room.bookedRanges)) {
+        room.bookedRanges.forEach((range) => {
+          list.push({
+            id: range.id,
+            guestName: range.guestName || 'VIP Guest',
+            phone: range.phone || '',
+            email: range.email || '',
+            roomId: room.id,
+            roomNumber: room.roomNumber,
+            roomName: room.name,
+            tier: room.category || room.tier,
+            category: room.category || room.tier,
+            floor: room.floor,
+            checkIn: range.actualCheckIn || range.checkIn,
+            checkOut: range.actualCheckOut || range.checkOut,
+            actualCheckIn: range.actualCheckIn || range.checkIn,
+            actualCheckOut: range.actualCheckOut || range.checkOut,
+            nights: range.nights || Math.max(1, Math.ceil(Math.abs(new Date(range.checkOut) - new Date(range.checkIn)) / 86400000)) || 1,
+            pricePKR: range.pricePKR || room.pricePKR,
+            checkedIn: Boolean(range.checkedIn),
+            checkedInAt: range.checkedInAt || null,
+            checkedOut: Boolean(range.checkedOut),
+            checkedOutAt: range.checkedOutAt || null,
+            status: range.checkedOut ? 'completed' : range.checkedIn ? 'checked-in' : 'confirmed',
+            notes: range.notes || '',
+            source: range.source || 'Locked Room Reservation',
+            createdAt: range.createdAt || new Date().toISOString(),
+            room: room,
+            range: range,
+            fromRoomRange: true
+          });
+        });
+      }
+    });
+
+    // Also include any bookingRequests with status === 'approved' or 'confirmed'
+    bookingRequests
+      .filter((r) => r.status === 'approved' || r.status === 'confirmed')
+      .forEach((r) => {
+        const alreadyExists = list.some(
+          (item) => (item.roomId === r.roomId || item.roomNumber === r.roomNumber) &&
+                    item.checkIn === r.checkIn && item.checkOut === r.checkOut
+        );
+        if (!alreadyExists) {
+          list.push({
+            ...r,
+            checkedIn: Boolean(r.checkedIn),
+            room: rooms.find((room) => room.id === r.roomId || room.roomNumber === r.roomNumber)
+          });
+        }
+      });
+
+    return list.sort((a, b) => new Date(a.checkIn) - new Date(b.checkIn));
+  }, [rooms, bookingRequests]);
 
   // Stats calculation
   const stats = RoomService.calculateStats(rooms);
   const pendingRequestsCount = bookingRequests.filter((r) => r.status === 'pending').length;
+  const confirmedRequestsCount = allConfirmedReservations.length;
+  const completedRequestsCount = bookingRequests.filter((r) => r.status === 'completed').length;
+
+  // Filtered booking requests based on requestFilter tab
+  const filteredBookingRequests = useMemo(() => {
+    if (requestFilter === 'confirmed') {
+      return allConfirmedReservations;
+    }
+    if (requestFilter === 'pending') {
+      return bookingRequests.filter((r) => r.status === 'pending');
+    }
+    if (requestFilter === 'completed') {
+      return bookingRequests.filter((r) => r.status === 'completed');
+    }
+    return bookingRequests;
+  }, [bookingRequests, allConfirmedReservations, requestFilter]);
 
   // Active custom categories (strictly category names, never floors!)
   const activeCategories = useMemo(() => {
@@ -665,6 +886,8 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
     const isTopSuite = room.floor === 'Top Suite';
     const roomPendingRequests = bookingRequests.filter((r) => r.roomId === room.id && r.status === 'pending');
     const hasPendingInquiry = roomPendingRequests.length > 0;
+    const checkedInRange = Array.isArray(room.bookedRanges) ? room.bookedRanges.find((b) => b.checkedIn) : null;
+    const hasCheckedInGuest = room.status === 'booked' || Boolean(checkedInRange) || Boolean(room.activeBooking?.checkedIn);
 
     return (
       <div
@@ -674,7 +897,7 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
             ? 'border-amber-400 ring-2 ring-amber-400/50 shadow-md shadow-amber-900/10'
             : isTopSuite
             ? 'border-[#B48A28]/60 shadow-[0_4px_20px_rgba(180,138,40,0.12)] ring-1 ring-[#B48A28]/30'
-            : isBooked
+            : hasCheckedInGuest
             ? 'border-rose-200 hover:border-rose-300 hover:shadow-md'
             : isCleaning
             ? 'border-amber-200 hover:border-amber-300 hover:shadow-md'
@@ -702,6 +925,11 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
               <span className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-[10.5px] font-mono uppercase tracking-wider bg-amber-50 border border-amber-300 text-amber-900 font-bold">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
                 <span>IN TURNOVER</span>
+              </span>
+            ) : hasCheckedInGuest ? (
+              <span className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-[10.5px] font-mono uppercase tracking-wider bg-rose-50 border border-rose-300 text-rose-800 font-bold">
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
+                <span>OCCUPIED</span>
               </span>
             ) : (
               <span className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-[10.5px] font-mono uppercase tracking-wider bg-emerald-50 border border-emerald-300 text-emerald-800 font-bold">
@@ -836,14 +1064,41 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
                         </div>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveBookedRange(room.id, range.id)}
-                        className="px-2 py-1 rounded text-[10px] font-mono font-semibold text-rose-700 hover:text-white hover:bg-rose-600 border border-rose-300 transition-colors shrink-0"
-                        title="Unlock these dates"
-                      >
-                        Unlock
-                      </button>
+                      <div className="flex items-center space-x-1 shrink-0">
+                        {!range.checkedIn ? (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenCheckIn(range, room)}
+                            className="px-2 py-1 rounded text-[10px] font-mono font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-600 hover:text-white border border-emerald-300 transition-colors flex items-center space-x-1"
+                            title="Check in guest to this room"
+                          >
+                            <LogIn className="w-2.5 h-2.5" />
+                            <span>Check In</span>
+                          </button>
+                        ) : (
+                          <span className="px-1.5 py-0.5 rounded text-[9.5px] font-mono font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center space-x-0.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                            <span>In-House</span>
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleOpenCheckoutFromRange(room, range)}
+                          className="px-2 py-1 rounded text-[10px] font-mono font-semibold text-amber-800 bg-amber-50 hover:bg-amber-600 hover:text-white border border-amber-300 transition-colors flex items-center space-x-1"
+                          title="Check out guest from this room"
+                        >
+                          <LogOut className="w-2.5 h-2.5" />
+                          <span>Check Out</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveBookedRange(room.id, range.id)}
+                          className="px-2 py-1 rounded text-[10px] font-mono font-semibold text-rose-700 hover:text-white hover:bg-rose-600 border border-rose-300 transition-colors"
+                          title="Unlock these dates"
+                        >
+                          Unlock
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -969,7 +1224,7 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
             </div>
           </div>
 
-          {/* Section Switcher: Inventory vs Booking Requests */}
+          {/* Section Switcher: Inventory vs Confirmed Bookings vs Booking Requests */}
           <div className="hidden md:flex items-center space-x-1.5 p-1 rounded-xl bg-stone-100 border border-stone-200/80">
             <button
               onClick={() => setActiveSection('inventory')}
@@ -984,15 +1239,33 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
             </button>
 
             <button
-              onClick={() => setActiveSection('requests')}
+              onClick={() => {
+                setActiveSection('requests');
+                setRequestFilter('confirmed');
+              }}
               className={`px-4 py-1.5 rounded-lg text-xs font-mono uppercase tracking-wider transition-all flex items-center space-x-2 ${
-                activeSection === 'requests'
+                activeSection === 'requests' && requestFilter === 'confirmed'
+                  ? 'bg-emerald-700 text-white font-bold shadow-xs border border-emerald-800'
+                  : 'text-stone-600 hover:text-emerald-800 hover:bg-stone-200/50'
+              }`}
+            >
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+              <span>Confirmed Bookings ({confirmedRequestsCount})</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setActiveSection('requests');
+                setRequestFilter('all');
+              }}
+              className={`px-4 py-1.5 rounded-lg text-xs font-mono uppercase tracking-wider transition-all flex items-center space-x-2 ${
+                activeSection === 'requests' && requestFilter !== 'confirmed'
                   ? 'bg-white text-stone-900 font-bold shadow-xs border border-stone-200/60'
                   : 'text-stone-600 hover:text-stone-900 hover:bg-stone-200/50'
               }`}
             >
               <MessageSquare className="w-3.5 h-3.5 text-[#B48A28]" />
-              <span>Booking Requests</span>
+              <span>Inquiries ({bookingRequests.length})</span>
               {pendingRequestsCount > 0 && (
                 <span className="w-5 h-5 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center animate-pulse">
                   {pendingRequestsCount}
@@ -1079,19 +1352,33 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
       <div className="md:hidden border-b border-stone-200 bg-stone-100/90 px-4 py-2 flex items-center space-x-2">
         <button
           onClick={() => setActiveSection('inventory')}
-          className={`flex-1 py-2 text-xs font-mono uppercase tracking-wider text-center rounded-lg ${
+          className={`flex-1 py-2 text-[11px] font-mono uppercase tracking-wider text-center rounded-lg ${
             activeSection === 'inventory' ? 'bg-white text-stone-900 font-bold shadow-2xs border border-stone-200' : 'text-stone-600'
           }`}
         >
-          Inventory ({rooms.length})
+          Rooms ({rooms.length})
         </button>
         <button
-          onClick={() => setActiveSection('requests')}
-          className={`flex-1 py-2 text-xs font-mono uppercase tracking-wider text-center rounded-lg flex items-center justify-center space-x-1.5 ${
-            activeSection === 'requests' ? 'bg-white text-stone-900 font-bold shadow-2xs border border-stone-200' : 'text-stone-600'
+          onClick={() => {
+            setActiveSection('requests');
+            setRequestFilter('confirmed');
+          }}
+          className={`flex-1 py-2 text-[11px] font-mono uppercase tracking-wider text-center rounded-lg ${
+            activeSection === 'requests' && requestFilter === 'confirmed' ? 'bg-emerald-700 text-white font-bold shadow-2xs' : 'text-stone-600'
           }`}
         >
-          <span>Requests</span>
+          Confirmed ({confirmedRequestsCount})
+        </button>
+        <button
+          onClick={() => {
+            setActiveSection('requests');
+            setRequestFilter('all');
+          }}
+          className={`flex-1 py-2 text-[11px] font-mono uppercase tracking-wider text-center rounded-lg flex items-center justify-center space-x-1 ${
+            activeSection === 'requests' && requestFilter !== 'confirmed' ? 'bg-white text-stone-900 font-bold shadow-2xs border border-stone-200' : 'text-stone-600'
+          }`}
+        >
+          <span>Inquiries</span>
           {pendingRequestsCount > 0 && (
             <span className="px-1.5 py-0.2 bg-rose-500 text-white rounded-full text-[10px] font-bold">
               {pendingRequestsCount}
@@ -1153,24 +1440,96 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
               </div>
             </div>
 
-            {bookingRequests.length === 0 ? (
+            {/* SUB-FILTER TABS */}
+            <div className="flex flex-wrap items-center gap-2 border-b border-stone-200 pb-3">
+              <button
+                type="button"
+                onClick={() => setRequestFilter('all')}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-mono font-medium transition-all ${
+                  requestFilter === 'all'
+                    ? 'bg-stone-900 text-white shadow-2xs font-bold'
+                    : 'bg-stone-100 text-stone-600 hover:bg-stone-200 hover:text-stone-900'
+                }`}
+              >
+                All Inquiries ({bookingRequests.length})
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setRequestFilter('confirmed')}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-mono font-medium transition-all flex items-center space-x-1.5 ${
+                  requestFilter === 'confirmed'
+                    ? 'bg-emerald-700 text-white shadow-2xs font-bold'
+                    : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200/80'
+                }`}
+              >
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                <span>Confirmed Bookings ({confirmedRequestsCount})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setRequestFilter('pending')}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-mono font-medium transition-all flex items-center space-x-1.5 ${
+                  requestFilter === 'pending'
+                    ? 'bg-amber-600 text-white shadow-2xs font-bold'
+                    : 'bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200/80'
+                }`}
+              >
+                <Clock className="w-3.5 h-3.5" />
+                <span>Pending Review ({pendingRequestsCount})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setRequestFilter('completed')}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-mono font-medium transition-all flex items-center space-x-1.5 ${
+                  requestFilter === 'completed'
+                    ? 'bg-stone-700 text-white shadow-2xs font-bold'
+                    : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
+                }`}
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Checked Out ({completedRequestsCount})</span>
+              </button>
+            </div>
+
+            {filteredBookingRequests.length === 0 ? (
               <div className="py-20 text-center rounded-2xl bg-white border border-stone-200 shadow-2xs space-y-4">
                 <MessageSquare className="w-8 h-8 text-stone-400 mx-auto" />
-                <p className="text-sm text-stone-700 font-mono">No booking requests submitted yet.</p>
-                <p className="text-xs text-stone-500">Inquiries submitted via polarishotels.pk/booking or staff entries will appear here.</p>
-                <button
-                  onClick={() => setAddRequestModalOpen(true)}
-                  className="px-4 py-2 rounded-lg bg-[#B48A28] hover:bg-[#9E7719] text-white text-xs font-mono uppercase tracking-wider font-semibold transition-all inline-flex items-center space-x-2 shadow-sm"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Add First Booking Request</span>
-                </button>
+                <p className="text-sm text-stone-700 font-mono">
+                  {bookingRequests.length === 0
+                    ? 'No booking requests submitted yet.'
+                    : `No ${requestFilter} reservations found.`}
+                </p>
+                <p className="text-xs text-stone-500">
+                  {bookingRequests.length === 0
+                    ? 'Inquiries submitted via polarishotels.pk/booking or staff entries will appear here.'
+                    : 'Try selecting a different filter above to view other inquiries and reservations.'}
+                </p>
+                {bookingRequests.length === 0 ? (
+                  <button
+                    onClick={() => setAddRequestModalOpen(true)}
+                    className="px-4 py-2 rounded-lg bg-[#B48A28] hover:bg-[#9E7719] text-white text-xs font-mono uppercase tracking-wider font-semibold transition-all inline-flex items-center space-x-2 shadow-sm"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Add First Booking Request</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setRequestFilter('all')}
+                    className="px-4 py-2 rounded-lg bg-stone-900 text-white text-xs font-mono uppercase tracking-wider font-semibold transition-all inline-flex items-center space-x-2"
+                  >
+                    <span>View All ({bookingRequests.length}) Inquiries</span>
+                  </button>
+                )}
               </div>
             ) : (
               <div className="space-y-4">
-                {bookingRequests.map((req) => {
+                {filteredBookingRequests.map((req) => {
                   const isPending = req.status === 'pending';
-                  const isApproved = req.status === 'approved';
+                  const isApproved = req.status === 'approved' || req.status === 'confirmed';
+                  const isCompleted = req.status === 'completed';
                   const isContacted = req.status === 'contacted';
                   const isDeclined = req.status === 'declined';
 
@@ -1178,7 +1537,9 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
                     <div
                       key={req.id}
                       className={`p-6 rounded-2xl bg-white border transition-all shadow-2xs ${
-                        isApproved
+                        isCompleted
+                          ? 'border-stone-200 bg-stone-50/40 opacity-90'
+                          : isApproved
                           ? 'border-emerald-200 bg-emerald-50/20'
                           : isPending
                           ? 'border-[#B48A28]/50 shadow-md shadow-amber-900/5'
@@ -1201,9 +1562,22 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
                               </span>
                             )}
                             {isApproved && (
-                              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono uppercase bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold flex items-center space-x-1">
-                                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                                <span>Approved & Locked</span>
+                              req.checkedIn ? (
+                                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono uppercase bg-rose-50 border border-rose-300 text-rose-800 font-bold flex items-center space-x-1.5">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
+                                  <span>In-House (Checked In: {req.actualCheckIn || req.checkIn})</span>
+                                </span>
+                              ) : (
+                                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono uppercase bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold flex items-center space-x-1">
+                                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                  <span>Confirmed & Locked</span>
+                                </span>
+                              )
+                            )}
+                            {isCompleted && (
+                              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono uppercase bg-stone-100 border border-stone-300 text-stone-700 font-bold flex items-center space-x-1">
+                                <CheckCircle2 className="w-3 h-3 text-stone-500" />
+                                <span>Checked Out (Completed)</span>
                               </span>
                             )}
                             {isContacted && (
@@ -1233,7 +1607,7 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
                               {req.checkIn} → {req.checkOut} ({req.nights} Nights)
                             </span>
                             <span className="text-stone-300">•</span>
-                            <span>{req.guests}</span>
+                            <span>{req.guests || '2 Guests'}</span>
                             <span className="text-stone-300">•</span>
                             <span className="font-mono text-[#B48A28] font-bold">
                               Est. PKR {(req.pricePKR * req.nights).toLocaleString()}
@@ -1253,6 +1627,11 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
                             <span className="text-stone-400 text-[11px]">
                               Submitted: {new Date(req.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric' })}
                             </span>
+                            {req.checkedOutAt && (
+                              <span className="text-stone-500 text-[11px] font-mono">
+                                • Checked out: {new Date(req.checkedOutAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric' })}
+                              </span>
+                            )}
                           </div>
 
                           {/* Notes */}
@@ -1279,9 +1658,45 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
                             <ExternalLink className="w-3 h-3 ml-0.5 opacity-80" />
                           </a>
 
-                          {/* 2. APPROVE & LOCK DATES */}
-                          {!isApproved && (
+                          {/* 2. CHECK IN GUEST (When booking is confirmed and not checked in) */}
+                          {isApproved && !req.checkedIn && (
                             <button
+                              type="button"
+                              onClick={() => handleOpenCheckIn(req)}
+                              className="px-4 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-mono uppercase tracking-wider font-bold transition-all flex items-center space-x-2 shadow-sm"
+                            >
+                              <LogIn className="w-4 h-4" />
+                              <span>Check In Guest</span>
+                            </button>
+                          )}
+
+                          {/* 3. CHECK OUT GUEST (When booking is confirmed/approved) */}
+                          {isApproved && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenCheckout(req)}
+                              className="px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-mono uppercase tracking-wider font-bold transition-all flex items-center space-x-2 shadow-sm"
+                            >
+                              <LogOut className="w-4 h-4" />
+                              <span>Check Out Guest</span>
+                            </button>
+                          )}
+
+                          {/* 4. UNLOCK DATES (If confirmed reservation from room) */}
+                          {req.fromRoomRange && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveBookedRange(req.roomId, req.id)}
+                              className="px-3 py-1.5 text-[11px] font-mono uppercase tracking-wider text-rose-600 hover:bg-rose-50 rounded transition-colors"
+                            >
+                              Unlock Dates
+                            </button>
+                          )}
+
+                          {/* 5. APPROVE & LOCK DATES */}
+                          {!isApproved && !isCompleted && (
+                            <button
+                              type="button"
                               onClick={() => handleApproveBookingRequest(req)}
                               className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-mono uppercase tracking-wider font-bold transition-all flex items-center space-x-2 shadow-sm"
                             >
@@ -1290,9 +1705,9 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
                             </button>
                           )}
 
-                          {/* 3. DECLINE & DELETE */}
+                          {/* 6. DECLINE & DELETE */}
                           <div className="flex items-center space-x-1.5">
-                            {!isDeclined && !isApproved && (
+                            {!isDeclined && !isApproved && !isCompleted && (
                               <button
                                 onClick={() => handleDeclineRequest(req.id)}
                                 className="px-3 py-1.5 text-[11px] font-mono uppercase tracking-wider text-stone-500 hover:text-rose-600 transition-colors"
@@ -1301,14 +1716,16 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
                               </button>
                             )}
 
-                            <button
-                              onClick={() => handleDeleteRequest(req.id)}
-                              className="p-1.5 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors"
-                              title="Permanently remove request"
-                              aria-label="Delete request"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                            {!req.fromRoomRange && (
+                              <button
+                                onClick={() => handleDeleteRequest(req.id)}
+                                className="p-1.5 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors"
+                                title="Permanently remove request"
+                                aria-label="Delete request"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
                           </div>
 
                         </div>
@@ -1970,7 +2387,14 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
         bookingRequests={bookingRequests}
         onApproveRequest={handleApproveBookingRequest}
         onTriggerStatusChange={handleInitiateStatusChange}
-        onRemoveBookedRange={handleRemoveBookedRange}
+        onCheckIn={(targetRoom, targetRange) => {
+          setDetailsModalOpen(false);
+          handleOpenCheckIn(targetRange, targetRoom);
+        }}
+        onCheckOut={(targetRoom, targetRange) => {
+          setDetailsModalOpen(false);
+          handleOpenCheckoutFromRange(targetRoom, targetRange);
+        }}
       />
 
       {/* 7. Add Booking Request Modal (Manual Inquiries) */}
@@ -2113,6 +2537,30 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
           const fresh = await FloorService.getFloors(true);
           setCustomFloors(fresh);
         }}
+      />
+
+      {/* Guest Check-In Modal */}
+      <CheckInModal
+        isOpen={checkInModalOpen}
+        onClose={() => {
+          setCheckInModalOpen(false);
+          setCheckInTarget({ booking: null, room: null });
+        }}
+        booking={checkInTarget.booking}
+        room={checkInTarget.room}
+        onConfirmCheckIn={handleConfirmCheckIn}
+      />
+
+      {/* Guest Check-Out Modal */}
+      <CheckOutModal
+        isOpen={checkoutModalOpen}
+        onClose={() => {
+          setCheckoutModalOpen(false);
+          setCheckoutTarget({ booking: null, room: null });
+        }}
+        booking={checkoutTarget.booking}
+        room={checkoutTarget.room}
+        onConfirmCheckOut={handleConfirmCheckOut}
       />
 
     </div>

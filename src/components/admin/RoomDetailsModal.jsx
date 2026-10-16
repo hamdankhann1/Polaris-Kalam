@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Bed, Calendar, User, Sparkles, CheckCircle2, ShieldCheck, Clock, MapPin, Tag, ArrowRight, MessageSquare, Phone } from 'lucide-react';
+import { X, Bed, Calendar, User, Sparkles, CheckCircle2, ShieldCheck, Clock, MapPin, Tag, ArrowRight, MessageSquare, Phone, LogOut, LogIn } from 'lucide-react';
 import { BookingRequestService } from '../../services/bookingRequestService';
 
 /**
@@ -17,7 +17,9 @@ export default function RoomDetailsModal({
   onTriggerStatusChange,
   bookingRequests = [],
   onApproveRequest,
-  onRemoveBookedRange
+  onRemoveBookedRange,
+  onCheckIn,
+  onCheckOut
 }) {
   if (!isOpen || !room) return null;
 
@@ -258,10 +260,39 @@ export default function RoomDetailsModal({
                       <span className="font-medium text-stone-900">{b.guestName || 'VIP Reservation'}</span>
                       <span className="text-[10px] text-stone-500 block font-mono">{b.source || 'Scheduled Block'}</span>
                     </div>
-                    <div className="flex items-center space-x-2">
-                      <span className="font-mono text-rose-700 font-bold text-[11px]">
+                    <div className="flex items-center space-x-1.5">
+                      <span className="font-mono text-rose-700 font-bold text-[11px] mr-1">
                         {b.checkIn} → {b.checkOut}
                       </span>
+                      {!b.checkedIn && onCheckIn ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onCheckIn(room, b);
+                            onClose();
+                          }}
+                          className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-600 hover:text-white border border-emerald-300 transition-colors flex items-center space-x-1"
+                          title="Check in guest"
+                        >
+                          <LogIn className="w-2.5 h-2.5" />
+                          <span>Check In</span>
+                        </button>
+                      ) : (
+                        <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                          In-House
+                        </span>
+                      )}
+                      {onCheckOut && (
+                        <button
+                          type="button"
+                          onClick={() => onCheckOut(room, b)}
+                          className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold text-amber-800 bg-amber-50 hover:bg-amber-600 hover:text-white border border-amber-300 transition-colors flex items-center space-x-1"
+                          title="Check out guest"
+                        >
+                          <LogOut className="w-2.5 h-2.5" />
+                          <span>Check Out</span>
+                        </button>
+                      )}
                       {onRemoveBookedRange && (
                         <button
                           type="button"

@@ -317,6 +317,7 @@ export default async function handler(req, res) {
       };
       if (status) updateFields.status = status;
       if (staffNote !== undefined) updateFields.staffNote = staffNote;
+      if (body.checkedOutAt) updateFields.checkedOutAt = body.checkedOutAt;
 
       if (collection) {
         await collection.updateOne({ id }, { $set: updateFields });

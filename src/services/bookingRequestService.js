@@ -239,14 +239,15 @@ export const BookingRequestService = {
   /**
    * Update status of a request -> persists to database
    */
-  async updateStatus(requestId, newStatus, note = '') {
+  async updateStatus(requestId, newStatus, note = '', extraFields = {}) {
     const res = await fetch('/api/bookings', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         id: requestId,
         status: newStatus,
-        staffNote: note
+        staffNote: note,
+        ...extraFields
       })
     });
 

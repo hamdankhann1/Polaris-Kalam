@@ -270,11 +270,18 @@ export default async function handler(req, res) {
   const fallbackAuthPass = req.headers['x-portal-password'] || req.body?.portalPassword;
   const isDirectPasswordValid = fallbackAuthPass && verifyPassword(fallbackAuthPass, PORTAL_PASS_HASH);
 
+  // Allow trusted internal CMS checkouts and sync operations from Front Desk
+  const isInternalCms = req.headers['x-cms-source'] === 'polaris-cms' || req.query?.source === 'polaris-cms' || req.body?.source === 'polaris-cms';
+
   if (!isAuthorized && !isDirectPasswordValid) {
-    return res.status(401).json({
-      success: false,
-      error: 'Unauthorized: Master Revenue Portal is locked. Enter password to view revenue.'
-    });
+    if (req.method === 'POST' && isInternalCms) {
+      // Authorized internal CMS check-out revenue record
+    } else {
+      return res.status(401).json({
+        success: false,
+        error: 'Unauthorized: Master Revenue Portal is locked. Enter password to view revenue.'
+      });
+    }
   }
 
   // Connect to Database
@@ -303,6 +310,42 @@ export default async function handler(req, res) {
       let allRecords = [];
 
       if (revenueCol) {
+        const count = await revenueCol.countDocuments({});
+        if (count === 0 && bookingsCol) {
+          // Auto-seed revenue_records from any existing confirmed bookings!
+          const confirmedBookings = await bookingsCol.find({
+            status: { $in: ['approved', 'confirmed', 'accepted', 'completed'] }
+          }).toArray();
+          const nowIso = new Date().toISOString();
+          for (const b of confirmedBookings) {
+            const bookingRef = b.bookingRef || b.id;
+            const revenueDate = (b.checkIn || b.createdAt || nowIso).substring(0, 10);
+            const totalAmount = Number(b.pricePKR || b.totalPKR || 45000) * (Number(b.nights) || 1);
+            await revenueCol.insertOne({
+              id: 'rev-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+              bookingId: b.id,
+              bookingRef: bookingRef,
+              guestName: b.guestName || 'VIP Guest',
+              phone: b.phone || '',
+              roomNumber: b.roomNumber || '',
+              roomName: b.roomName || 'Polaris Suite',
+              category: b.category || b.tier || 'Executive Suite',
+              floor: b.floor || '',
+              checkIn: b.checkIn || revenueDate,
+              checkOut: b.checkOut || revenueDate,
+              nights: Number(b.nights) || 1,
+              nightlyRate: Number(b.pricePKR) || 45000,
+              amount: totalAmount,
+              paymentMethod: b.paymentMethod || 'Confirmed Reservation',
+              status: b.status === 'completed' ? 'completed' : 'paid',
+              date: revenueDate,
+              notes: b.notes || 'Auto-imported from Confirmed Bookings',
+              createdAt: b.createdAt || nowIso,
+              updatedAt: nowIso
+            });
+          }
+        }
+
         allRecords = await revenueCol.find({}).sort({ date: -1, createdAt: -1 }).toArray();
         allRecords = allRecords.map(({ _id, ...rest }) => rest);
       } else {
@@ -447,56 +490,108 @@ export default async function handler(req, res) {
     try {
       // 4A. One-Click Sync from Confirmed Bookings in MongoDB
       if (action === 'sync-bookings') {
-        if (!bookingsCol) {
-          return res.status(400).json({ success: false, error: 'Bookings database is not currently reachable.' });
-        }
-
-        const confirmedBookings = await bookingsCol.find({
-          status: { $in: ['accepted', 'completed', 'confirmed'] }
-        }).toArray();
-
         let importedCount = 0;
         const nowIso = new Date().toISOString();
 
-        for (const b of confirmedBookings) {
-          const bookingRef = b.bookingRef || b.id;
-          const revenueDate = (b.checkIn || b.createdAt || nowIso).substring(0, 10);
-          const totalAmount = Number(b.pricePKR || b.totalPKR || 45000) * (Number(b.nights) || 1);
+        // 1. Sync from booking_requests collection
+        if (bookingsCol) {
+          const confirmedBookings = await bookingsCol.find({
+            status: { $in: ['approved', 'confirmed', 'accepted', 'completed'] }
+          }).toArray();
 
-          if (revenueCol) {
-            const exists = await revenueCol.findOne({
-              $or: [
-                { bookingId: b.id },
-                { bookingRef: bookingRef }
-              ]
-            });
+          for (const b of confirmedBookings) {
+            const bookingRef = b.bookingRef || b.id;
+            const revenueDate = (b.checkIn || b.createdAt || nowIso).substring(0, 10);
+            const totalAmount = Number(b.pricePKR || b.totalPKR || 45000) * (Number(b.nights) || 1);
 
-            if (!exists) {
-              const newEntry = {
-                id: 'rev-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
-                bookingId: b.id,
-                bookingRef: bookingRef,
-                guestName: b.guestName || 'VIP Guest',
-                phone: b.phone || '',
-                roomNumber: b.roomNumber || '',
-                roomName: b.roomName || 'Polaris Suite',
-                category: b.category || b.tier || 'Executive Suite',
-                floor: b.floor || '',
-                checkIn: b.checkIn || revenueDate,
-                checkOut: b.checkOut || revenueDate,
-                nights: Number(b.nights) || 1,
-                nightlyRate: Number(b.pricePKR) || 45000,
-                amount: totalAmount,
-                paymentMethod: b.paymentMethod || 'Online Reservation',
-                status: 'paid',
-                date: revenueDate,
-                notes: b.notes || 'Imported from Reservations',
-                createdAt: b.createdAt || nowIso,
-                updatedAt: nowIso
-              };
+            if (revenueCol) {
+              const exists = await revenueCol.findOne({
+                $or: [
+                  { bookingId: b.id },
+                  { bookingRef: bookingRef }
+                ]
+              });
 
-              await revenueCol.insertOne(newEntry);
-              importedCount++;
+              if (!exists) {
+                const newEntry = {
+                  id: 'rev-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+                  bookingId: b.id,
+                  bookingRef: bookingRef,
+                  guestName: b.guestName || 'VIP Guest',
+                  phone: b.phone || '',
+                  roomNumber: b.roomNumber || '',
+                  roomName: b.roomName || 'Polaris Suite',
+                  category: b.category || b.tier || 'Executive Suite',
+                  floor: b.floor || '',
+                  checkIn: b.checkIn || revenueDate,
+                  checkOut: b.checkOut || revenueDate,
+                  nights: Number(b.nights) || 1,
+                  nightlyRate: Number(b.pricePKR) || 45000,
+                  amount: totalAmount,
+                  paymentMethod: b.paymentMethod || 'Confirmed Reservation',
+                  status: b.status === 'completed' ? 'completed' : 'paid',
+                  date: revenueDate,
+                  notes: b.notes || 'Imported from Confirmed Reservations',
+                  createdAt: b.createdAt || nowIso,
+                  updatedAt: nowIso
+                };
+
+                await revenueCol.insertOne(newEntry);
+                importedCount++;
+              }
+            }
+          }
+        }
+
+        // 2. Also sync from rooms collection bookedRanges (direct staff calendar locks)
+        const roomsCol = db ? db.collection('rooms') : null;
+        if (roomsCol && revenueCol) {
+          const allRooms = await roomsCol.find({}).toArray();
+          for (const room of allRooms) {
+            if (Array.isArray(room.bookedRanges)) {
+              for (const range of room.bookedRanges) {
+                const bookingRef = range.bookingRef || range.id;
+                const exists = await revenueCol.findOne({
+                  $or: [
+                    { bookingId: range.id },
+                    { bookingRef: bookingRef }
+                  ]
+                });
+
+                if (!exists && range.checkIn && range.checkOut) {
+                  const start = new Date(range.checkIn);
+                  const end = new Date(range.checkOut);
+                  const nights = Math.max(1, Math.ceil(Math.abs(end - start) / 86400000)) || 1;
+                  const totalAmount = (Number(room.pricePKR) || 45000) * nights;
+                  const revenueDate = range.checkIn.substring(0, 10);
+
+                  const newEntry = {
+                    id: 'rev-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+                    bookingId: range.id,
+                    bookingRef: bookingRef || 'BLK-' + Math.floor(1000 + Math.random() * 9000),
+                    guestName: range.guestName || 'VIP Guest',
+                    phone: '',
+                    roomNumber: room.roomNumber || '',
+                    roomName: room.name || 'Polaris Suite',
+                    category: room.category || room.tier || 'Executive Suite',
+                    floor: room.floor || '',
+                    checkIn: range.checkIn,
+                    checkOut: range.checkOut,
+                    nights: nights,
+                    nightlyRate: Number(room.pricePKR) || 45000,
+                    amount: totalAmount,
+                    paymentMethod: range.source || 'Front Desk Locked Dates',
+                    status: 'paid',
+                    date: revenueDate,
+                    notes: range.notes || 'Imported from Room Booked Dates',
+                    createdAt: range.createdAt || nowIso,
+                    updatedAt: nowIso
+                  };
+
+                  await revenueCol.insertOne(newEntry);
+                  importedCount++;
+                }
+              }
             }
           }
         }
