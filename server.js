@@ -589,6 +589,34 @@ app.delete('/api/rooms', async (req, res) => {
   }
 });
 
+// --- REVENUE, CATEGORIES & FLOORS API ---
+app.all('/api/revenue*', async (req, res) => {
+  try {
+    const revenueMod = await import('./api/revenue.js');
+    return revenueMod.default(req, res);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.all('/api/categories*', async (req, res) => {
+  try {
+    const categoriesMod = await import('./api/categories.js');
+    return categoriesMod.default(req, res);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.all('/api/floors*', async (req, res) => {
+  try {
+    const floorsMod = await import('./api/floors.js');
+    return floorsMod.default(req, res);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // =========================================================================
 // STATIC FRONTEND SERVING (Vite production build from dist/)
 // =========================================================================

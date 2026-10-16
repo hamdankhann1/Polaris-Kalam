@@ -9,6 +9,9 @@ export default defineConfig(({ mode }) => {
 
   let cachedRoomsMod = null;
   let cachedBookingsMod = null;
+  let cachedCategoriesMod = null;
+  let cachedFloorsMod = null;
+  let cachedRevenueMod = null;
 
   return {
     plugins: [
@@ -17,7 +20,13 @@ export default defineConfig(({ mode }) => {
         name: 'api-dev-server',
         configureServer(server) {
           server.middlewares.use(async (req, res, next) => {
-            if (req.url && (req.url.startsWith('/api/rooms') || req.url.startsWith('/api/bookings'))) {
+            if (req.url && (
+              req.url.startsWith('/api/rooms') ||
+              req.url.startsWith('/api/bookings') ||
+              req.url.startsWith('/api/categories') ||
+              req.url.startsWith('/api/floors') ||
+              req.url.startsWith('/api/revenue')
+            )) {
               if (!res.status) {
                 res.status = function(code) {
                   this.statusCode = code;
@@ -44,16 +53,24 @@ export default defineConfig(({ mode }) => {
                 }
                 try {
                   if (req.url.startsWith('/api/rooms')) {
-                    if (!cachedRoomsMod) {
-                      cachedRoomsMod = await import('./api/rooms.js');
-                    }
+                    if (!cachedRoomsMod) cachedRoomsMod = await import('./api/rooms.js');
                     return cachedRoomsMod.default(req, res);
                   }
                   if (req.url.startsWith('/api/bookings')) {
-                    if (!cachedBookingsMod) {
-                      cachedBookingsMod = await import('./api/bookings.js');
-                    }
+                    if (!cachedBookingsMod) cachedBookingsMod = await import('./api/bookings.js');
                     return cachedBookingsMod.default(req, res);
+                  }
+                  if (req.url.startsWith('/api/categories')) {
+                    if (!cachedCategoriesMod) cachedCategoriesMod = await import('./api/categories.js');
+                    return cachedCategoriesMod.default(req, res);
+                  }
+                  if (req.url.startsWith('/api/floors')) {
+                    if (!cachedFloorsMod) cachedFloorsMod = await import('./api/floors.js');
+                    return cachedFloorsMod.default(req, res);
+                  }
+                  if (req.url.startsWith('/api/revenue')) {
+                    if (!cachedRevenueMod) cachedRevenueMod = await import('./api/revenue.js');
+                    return cachedRevenueMod.default(req, res);
                   }
                 } catch (err) {
                   console.error('[API Dev Server Error]', err);

@@ -8,21 +8,23 @@ import InquiryModal from './components/InquiryModal';
 import AdminPortal from './components/admin/AdminPortal';
 import StaffLoginModal from './components/admin/StaffLoginModal';
 import BookingPage from './components/booking/BookingPage';
+import RevenueMasterLook from './components/revenue/RevenueMasterLook';
 
 /**
  * =========================================================================
  * Polaris Hotel — Main Application Routing
  * =========================================================================
  * 
- * Supports 3 environments:
+ * Supports 4 environments:
  * 1. Main Landing Website ('website') — Default home page
  * 2. Direct Booking Portal ('booking') — Accessed via /booking or #booking (polarishotels.pk/booking)
  * 3. Secret Admin CMS ('admin') — ONLY accessible via /admintopsecretmanage or #admintopsecretmanage
+ * 4. Master Revenue Look ('revenuemasterlook') — ONLY accessible via /revenuemasterlook (polarishotels.pk/revenuemasterlook)
  * 
  * SECURITY:
- * - There are ZERO visible links or buttons on the home page leading to the admin portal.
- * - Access is strictly limited to the secret direct link: polarishotels.pk/admintopsecretmanage
- * - Protected with staff PIN gate.
+ * - There are ZERO visible links or buttons on the home page leading to the admin portal or revenue look.
+ * - Access is strictly limited to the secret direct links.
+ * - Revenue portal is protected by encrypted password verification.
  */
 export default function App() {
   // Determine initial view from URL path/hash
@@ -31,6 +33,15 @@ export default function App() {
       const hash = window.location.hash.toLowerCase();
       const path = window.location.pathname.toLowerCase();
       const search = window.location.search.toLowerCase();
+
+      // Check for Master Revenue Look portal: polarishotels.pk/revenuemasterlook
+      if (
+        hash.includes('revenuemasterlook') ||
+        path.includes('revenuemasterlook') ||
+        search.includes('revenuemasterlook=true')
+      ) {
+        return 'revenuemasterlook';
+      }
 
       // Check for booking portal link first
       if (
@@ -75,6 +86,16 @@ export default function App() {
       const hash = window.location.hash.toLowerCase();
       const path = window.location.pathname.toLowerCase();
       const search = window.location.search.toLowerCase();
+
+      // Check for Master Revenue Look portal: polarishotels.pk/revenuemasterlook
+      if (
+        hash.includes('revenuemasterlook') ||
+        path.includes('revenuemasterlook') ||
+        search.includes('revenuemasterlook=true')
+      ) {
+        setCurrentView('revenuemasterlook');
+        return;
+      }
 
       // 1. Check for booking portal (takes priority if hash is #booking or path is /booking)
       if (
@@ -229,6 +250,17 @@ export default function App() {
           }
         }}
         onLogout={handleLogout}             // Option C: Direct logout action
+      />
+    );
+  }
+
+  // =========================================================================
+  // VIEW: MASTER REVENUE LOOK (polarishotels.pk/revenuemasterlook)
+  // =========================================================================
+  if (currentView === 'revenuemasterlook') {
+    return (
+      <RevenueMasterLook
+        onReturnHome={handleReturnToWebsite}
       />
     );
   }
