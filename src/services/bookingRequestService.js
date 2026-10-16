@@ -79,6 +79,9 @@ function notifyListeners(requests) {
 }
 
 let cachedRequests = [];
+let inFlightRequestsPromise = null;
+let lastRequestsFetchTime = 0;
+const REQUESTS_CACHE_TTL_MS = 5000; // 5-second in-memory throttle for read queries
 
 export const BookingRequestService = {
   subscribe(callback) {
@@ -96,57 +99,75 @@ export const BookingRequestService = {
    * SOLE SOURCE OF TRUTH IS THE DATABASE — NO PERSISTENT LOCAL STORAGE.
    */
   async getRequests(force = false) {
-    try {
-      const res = await fetch(`/api/bookings?t=${Date.now()}`, {
-        cache: 'no-store',
-        headers: {
-          'Accept': 'application/json',
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache'
-        }
-      });
+    const now = Date.now();
+    // 1. If fresh data was fetched within TTL and force is not set, return cached copy immediately
+    if (!force && cachedRequests.length > 0 && (now - lastRequestsFetchTime < REQUESTS_CACHE_TTL_MS)) {
+      return [...cachedRequests];
+    }
 
-      if (res.ok) {
-        const json = await res.json();
-        lastDbConnection = {
-          dbConnected: Boolean(json.dbConnected || json.source === 'mongodb'),
-          source: json.source || (json.dbConnected ? 'mongodb' : 'memory'),
-          dbError: json.dbError || null,
-          envDetected: Boolean(json.envDetected),
-          envKey: json.envKey || null,
-          lastSyncedAt: new Date().toISOString()
-        };
+    // 2. Deduplicate in-flight promises: if already fetching, reuse active promise
+    if (inFlightRequestsPromise) {
+      return inFlightRequestsPromise;
+    }
 
-        if (json.success && Array.isArray(json.data)) {
-          const cloudRequests = json.data.filter((r) => !isExpiredRequest(r));
-          cachedRequests = cloudRequests;
-          notifyListeners(cloudRequests);
-          return [...cloudRequests];
+    inFlightRequestsPromise = (async () => {
+      try {
+        const res = await fetch(`/api/bookings?t=${Date.now()}`, {
+          cache: 'no-store',
+          headers: {
+            'Accept': 'application/json',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache'
+          }
+        });
+
+        if (res.ok) {
+          const json = await res.json();
+          lastDbConnection = {
+            dbConnected: Boolean(json.dbConnected || json.source === 'mongodb' || json.source === 'mongodb-cache'),
+            source: json.source || (json.dbConnected ? 'mongodb' : 'memory'),
+            dbError: json.dbError || null,
+            envDetected: Boolean(json.envDetected),
+            envKey: json.envKey || null,
+            lastSyncedAt: new Date().toISOString()
+          };
+
+          if (json.success && Array.isArray(json.data)) {
+            const cloudRequests = json.data.filter((r) => !isExpiredRequest(r));
+            cachedRequests = cloudRequests;
+            lastRequestsFetchTime = Date.now();
+            notifyListeners(cloudRequests);
+            return [...cloudRequests];
+          }
+        } else {
+          const errJson = await res.json().catch(() => null);
+          lastDbConnection = {
+            dbConnected: false,
+            source: 'error',
+            dbError: errJson?.error || `HTTP ${res.status} ${res.statusText}`,
+            envDetected: false,
+            envKey: null,
+            lastSyncedAt: new Date().toISOString()
+          };
         }
-      } else {
-        const errJson = await res.json().catch(() => null);
+      } catch (err) {
+        console.warn('[BookingRequestService] Database API unreachable:', err);
         lastDbConnection = {
           dbConnected: false,
-          source: 'error',
-          dbError: errJson?.error || `HTTP ${res.status} ${res.statusText}`,
+          source: 'network_error',
+          dbError: err.message || 'Network request failed',
           envDetected: false,
           envKey: null,
           lastSyncedAt: new Date().toISOString()
         };
+      } finally {
+        inFlightRequestsPromise = null;
       }
-    } catch (err) {
-      console.warn('[BookingRequestService] Database API unreachable:', err);
-      lastDbConnection = {
-        dbConnected: false,
-        source: 'network_error',
-        dbError: err.message || 'Network request failed',
-        envDetected: false,
-        envKey: null,
-        lastSyncedAt: new Date().toISOString()
-      };
-    }
 
-    return [...cachedRequests];
+      return [...cachedRequests];
+    })();
+
+    return inFlightRequestsPromise;
   },
 
   async syncWithCloud() {
@@ -286,14 +307,8 @@ Concierge Team • Polaris Kalam Valley`;
   }
 };
 
-// Automatic real-time background sync every 3 seconds while active
+// Real-time window focus & visibility sync (throttled by REQUESTS_CACHE_TTL_MS)
 if (typeof window !== 'undefined') {
-  setInterval(() => {
-    if (document.visibilityState === 'visible') {
-      BookingRequestService.getRequests().catch(() => {});
-    }
-  }, 3000);
-
   window.addEventListener('focus', () => {
     BookingRequestService.getRequests().catch(() => {});
   });

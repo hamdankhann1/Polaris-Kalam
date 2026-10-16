@@ -70,8 +70,9 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState('all');
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('all');
   const [selectedFloorFilter, setSelectedFloorFilter] = useState('all');
-  const [groupByFloor, setGroupByFloor] = useState(true);
+  const [viewGrouping, setViewGrouping] = useState('category'); // 'category' | 'floor' | 'flat'
 
   // Status Change Modal State
   const [statusModalOpen, setStatusModalOpen] = useState(false);
@@ -104,6 +105,7 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
   // Floor Management State
   const [customFloors, setCustomFloors] = useState([]);
   const [floorManagerModalOpen, setFloorManagerModalOpen] = useState(false);
+  const [initialFloorForAdd, setInitialFloorForAdd] = useState(null);
 
   // Other Modals
   const [newBookingModalOpen, setNewBookingModalOpen] = useState(false);
@@ -192,12 +194,12 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
     window.addEventListener('polaris:booking-update', handleCustomBookingUpdate);
     window.addEventListener('polaris:room-update', handleCustomRoomUpdate);
 
-    // 3. Active 3-second real-time database polling (syncs across laptop & mobile automatically)
+    // 3. Relaxed 15-second real-time database polling (syncs across laptop & mobile automatically)
     const pollInterval = setInterval(() => {
       if (document.visibilityState === 'visible') {
         handleWindowFocus();
       }
-    }, 3000);
+    }, 15000);
 
     // 4. Tab focus and visibility sync (refreshes whenever staff switches tabs)
     const handleWindowFocus = async () => {
@@ -375,12 +377,16 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
   };
 
   // --- ADD / EDIT ROOM HANDLERS ---
-  const handleOpenAddRoom = (cat = null) => {
+  const handleOpenAddRoom = (cat = null, flr = null) => {
     setRoomToEdit(null);
     const targetCat = (typeof cat === 'string' && cat.trim())
       ? cat.trim()
+      : (selectedCategoryFilter !== 'all' ? selectedCategoryFilter : null);
+    const targetFlr = (typeof flr === 'string' && flr.trim())
+      ? flr.trim()
       : (selectedFloorFilter !== 'all' ? selectedFloorFilter : null);
     setInitialCategoryForAdd(targetCat);
+    setInitialFloorForAdd(targetFlr);
     setRoomFormModalOpen(true);
   };
 
@@ -597,18 +603,31 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
   const stats = RoomService.calculateStats(rooms);
   const pendingRequestsCount = bookingRequests.filter((r) => r.status === 'pending').length;
 
-  // Active custom categories merged with current rooms
+  // Active custom categories (strictly category names, never floors!)
   const activeCategories = useMemo(() => {
     const set = new Set();
     customCategories.forEach((c) => {
       if (c.name && c.name.trim()) set.add(c.name.trim());
     });
     rooms.forEach((r) => {
-      const c = (r.category || r.floor || '').trim();
+      const c = (r.category || '').trim();
       if (c) set.add(c);
     });
     return Array.from(set);
   }, [customCategories, rooms]);
+
+  // Active custom floors (strictly floor names, never categories!)
+  const activeFloors = useMemo(() => {
+    const set = new Set();
+    customFloors.forEach((f) => {
+      if (f.name && f.name.trim()) set.add(f.name.trim());
+    });
+    rooms.forEach((r) => {
+      const flr = (r.floor || '').trim();
+      if (flr) set.add(flr);
+    });
+    return Array.from(set);
+  }, [customFloors, rooms]);
 
   // Filtered rooms
   const filteredRooms = rooms.filter((room) => {
@@ -619,13 +638,16 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
     } else if (selectedStatusFilter !== 'all' && room.status !== selectedStatusFilter) {
       return false;
     }
-    if (selectedFloorFilter !== 'all' && (room.category || room.floor || 'General Inventory').trim() !== selectedFloorFilter) {
+    if (selectedCategoryFilter !== 'all' && (room.category || '').trim() !== selectedCategoryFilter) {
+      return false;
+    }
+    if (selectedFloorFilter !== 'all' && (room.floor || '').trim() !== selectedFloorFilter) {
       return false;
     }
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      const matchNumber = room.roomNumber.toLowerCase().includes(q);
-      const matchName = room.name.toLowerCase().includes(q);
+      const matchNumber = (room.roomNumber || '').toLowerCase().includes(q);
+      const matchName = (room.name || '').toLowerCase().includes(q);
       const matchCategory = (room.category || '').toLowerCase().includes(q);
       const matchTier = (room.tier || '').toLowerCase().includes(q);
       const matchFloor = (room.floor || '').toLowerCase().includes(q);
@@ -668,13 +690,6 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
                 #{room.roomNumber}
               </span>
 
-              <span className={`text-[11px] font-mono flex items-center space-x-1 ${
-                isTopSuite ? 'text-[#B48A28] font-semibold' : 'text-stone-500'
-              }`}>
-                {isTopSuite && <Crown className="w-3 h-3 text-[#B48A28]" />}
-                <span>{room.category || room.floor}</span>
-              </span>
-
               {hasPendingInquiry && (
                 <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-100 border border-amber-300 text-amber-900 font-bold animate-pulse">
                   Request Waiting
@@ -700,9 +715,22 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
             <h3 className="font-display text-lg text-stone-900 font-medium group-hover:text-[#B48A28] transition-colors">
               {room.name}
             </h3>
+
+            {/* Simultaneous Category & Floor Badges */}
+            <div className="flex flex-wrap items-center gap-1.5 mt-2">
+              <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[11px] font-mono font-medium bg-stone-100 border border-stone-200 text-stone-800">
+                {isTopSuite ? <Crown className="w-3 h-3 text-[#B48A28]" /> : <Layers className="w-3 h-3 text-[#B48A28]" />}
+                <span>{room.category || 'General Category'}</span>
+              </span>
+
+              <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[11px] font-mono font-medium bg-amber-50 border border-amber-200 text-amber-900">
+                <Building2 className="w-3 h-3 text-[#B48A28]" />
+                <span>{room.floor || 'Floor 1'}</span>
+              </span>
+            </div>
             
-            <div className="flex items-center justify-between text-xs mt-1.5">
-              <span className="text-stone-500 text-[11.5px]">{room.category || room.tier}</span>
+            <div className="flex items-center justify-between text-xs mt-2.5 pt-2 border-t border-stone-100">
+              <span className="text-stone-500 text-[11px] font-mono">{room.capacity}</span>
               
               <button
                 type="button"
@@ -1476,15 +1504,16 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
               </div>
             </div>
 
-            {/* ROOM CATEGORIES SELECTOR STRIP */}
-            <div className="p-4 rounded-xl bg-white border border-stone-200 shadow-2xs space-y-3">
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <span className="text-[10px] font-mono uppercase tracking-widest text-stone-500 flex items-center space-x-1.5 font-medium">
-                  <Layers className="w-3.5 h-3.5 text-[#B48A28]" />
-                  <span>Room Categories ({activeCategories.length}):</span>
-                </span>
+            {/* ROOM CATEGORIES & FLOORS MANAGEMENT BAR */}
+            <div className="p-4 rounded-xl bg-white border border-stone-200 shadow-2xs space-y-4">
+              {/* Category Filter Strip */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <span className="text-[10px] font-mono uppercase tracking-widest text-stone-500 flex items-center space-x-1.5 font-medium">
+                    <Layers className="w-3.5 h-3.5 text-[#B48A28]" />
+                    <span>Filter by Category ({activeCategories.length}):</span>
+                  </span>
 
-                <div className="flex items-center space-x-2">
                   <button
                     onClick={() => setCategoryManagerModalOpen(true)}
                     className="text-[11px] font-mono text-[#B48A28] hover:text-[#9E7719] font-semibold flex items-center space-x-1 px-2.5 py-1 rounded bg-amber-50 border border-amber-200 hover:bg-amber-100 transition-colors"
@@ -1492,53 +1521,108 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
                     <Plus className="w-3 h-3" />
                     <span>Manage Categories</span>
                   </button>
+                </div>
 
+                <div className="flex items-center space-x-2 overflow-x-auto pb-1 scrollbar-none">
                   <button
-                    onClick={() => setFloorManagerModalOpen(true)}
-                    className="text-[11px] font-mono text-stone-700 hover:text-stone-900 font-semibold flex items-center space-x-1 px-2.5 py-1 rounded bg-stone-100 border border-stone-200 hover:bg-stone-200 transition-colors"
+                    onClick={() => setSelectedCategoryFilter('all')}
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-mono uppercase tracking-wider transition-all shrink-0 ${
+                      selectedCategoryFilter === 'all'
+                        ? 'bg-stone-900 text-white font-bold border border-stone-900 shadow-xs'
+                        : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100 border border-stone-200'
+                    }`}
                   >
-                    <Building2 className="w-3 h-3 text-[#B48A28]" />
-                    <span>Manage Floors</span>
+                    All Categories ({rooms.length})
                   </button>
 
-                  <button
-                    onClick={() => setGroupByFloor(!groupByFloor)}
-                    className="text-[10.5px] font-mono text-stone-600 hover:text-stone-900 transition-colors flex items-center space-x-1"
-                  >
-                    <span>View:</span>
-                    <span className="underline font-bold text-stone-900">{groupByFloor ? 'Grouped by Category' : 'Combined Grid'}</span>
-                  </button>
+                  {activeCategories.map((cat) => {
+                    const count = rooms.filter((r) => (r.category || '').trim() === cat).length;
+                    return (
+                      <button
+                        key={cat}
+                        onClick={() => setSelectedCategoryFilter(cat)}
+                        className={`px-3.5 py-1.5 rounded-lg text-xs font-mono uppercase tracking-wider transition-all shrink-0 ${
+                          selectedCategoryFilter === cat
+                            ? 'bg-[#B48A28] text-white font-bold border border-[#B48A28] shadow-xs'
+                            : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100 border border-stone-200'
+                        }`}
+                      >
+                        {cat} ({count})
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
-              <div className="flex items-center space-x-2 overflow-x-auto pb-1 scrollbar-none">
-                <button
-                  onClick={() => setSelectedFloorFilter('all')}
-                  className={`px-3.5 py-2 rounded-lg text-xs font-mono uppercase tracking-wider transition-all shrink-0 ${
-                    selectedFloorFilter === 'all'
-                      ? 'bg-stone-900 text-white font-bold border border-stone-900 shadow-xs'
-                      : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100'
-                  }`}
-                >
-                  All Categories ({rooms.length})
-                </button>
+              {/* Floor Filter Strip & View Switcher */}
+              <div className="pt-3 border-t border-stone-100 space-y-2">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <span className="text-[10px] font-mono uppercase tracking-widest text-stone-500 flex items-center space-x-1.5 font-medium">
+                    <Building2 className="w-3.5 h-3.5 text-[#B48A28]" />
+                    <span>Filter by Floor ({activeFloors.length}):</span>
+                  </span>
 
-                {activeCategories.map((cat) => {
-                  const count = stats.byCategory?.[cat] || rooms.filter((r) => (r.category || r.floor || '').trim() === cat).length;
-                  return (
+                  <div className="flex items-center space-x-2">
                     <button
-                      key={cat}
-                      onClick={() => setSelectedFloorFilter(cat)}
-                      className={`px-3.5 py-2 rounded-lg text-xs font-mono uppercase tracking-wider transition-all shrink-0 ${
-                        selectedFloorFilter === cat
-                          ? 'bg-[#B48A28] text-white font-bold border border-[#B48A28] shadow-xs'
-                          : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100'
-                      }`}
+                      onClick={() => setFloorManagerModalOpen(true)}
+                      className="text-[11px] font-mono text-stone-700 hover:text-stone-900 font-semibold flex items-center space-x-1 px-2.5 py-1 rounded bg-stone-100 border border-stone-200 hover:bg-stone-200 transition-colors"
                     >
-                      {cat} ({count})
+                      <Plus className="w-3 h-3 text-[#B48A28]" />
+                      <span>Manage Floors</span>
                     </button>
-                  );
-                })}
+
+                    <div className="flex items-center space-x-1 p-0.5 rounded-lg bg-stone-100 border border-stone-200 text-[10.5px] font-mono">
+                      <button
+                        onClick={() => setViewGrouping('category')}
+                        className={`px-2 py-0.5 rounded transition-all ${viewGrouping === 'category' ? 'bg-white text-stone-900 font-bold shadow-2xs' : 'text-stone-600'}`}
+                      >
+                        Group by Category
+                      </button>
+                      <button
+                        onClick={() => setViewGrouping('floor')}
+                        className={`px-2 py-0.5 rounded transition-all ${viewGrouping === 'floor' ? 'bg-white text-stone-900 font-bold shadow-2xs' : 'text-stone-600'}`}
+                      >
+                        Group by Floor
+                      </button>
+                      <button
+                        onClick={() => setViewGrouping('flat')}
+                        className={`px-2 py-0.5 rounded transition-all ${viewGrouping === 'flat' ? 'bg-white text-stone-900 font-bold shadow-2xs' : 'text-stone-600'}`}
+                      >
+                        Flat Grid
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center space-x-2 overflow-x-auto pb-1 scrollbar-none">
+                  <button
+                    onClick={() => setSelectedFloorFilter('all')}
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-mono uppercase tracking-wider transition-all shrink-0 ${
+                      selectedFloorFilter === 'all'
+                        ? 'bg-stone-900 text-white font-bold border border-stone-900 shadow-xs'
+                        : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100 border border-stone-200'
+                    }`}
+                  >
+                    All Floors ({rooms.length})
+                  </button>
+
+                  {activeFloors.map((flr) => {
+                    const count = rooms.filter((r) => (r.floor || '').trim() === flr).length;
+                    return (
+                      <button
+                        key={flr}
+                        onClick={() => setSelectedFloorFilter(flr)}
+                        className={`px-3.5 py-1.5 rounded-lg text-xs font-mono uppercase tracking-wider transition-all shrink-0 ${
+                          selectedFloorFilter === flr
+                            ? 'bg-[#B48A28] text-white font-bold border border-[#B48A28] shadow-xs'
+                            : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100 border border-stone-200'
+                        }`}
+                      >
+                        {flr} ({count})
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
 
@@ -1662,11 +1746,11 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
                   </button>
                 </div>
               </div>
-            ) : groupByFloor && selectedFloorFilter === 'all' && !searchQuery.trim() ? (
+            ) : viewGrouping === 'category' && selectedCategoryFilter === 'all' && !searchQuery.trim() ? (
               // GROUPED BY CATEGORY VIEW
               <div className="space-y-10">
                 {activeCategories.map((cat) => {
-                  const categoryRooms = filteredRooms.filter((r) => (r.category || r.floor || 'General Inventory').trim() === cat);
+                  const categoryRooms = filteredRooms.filter((r) => (r.category || '').trim() === cat);
                   if (categoryRooms.length === 0) return null;
 
                   return (
@@ -1687,7 +1771,7 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
                         </div>
 
                         <button
-                          onClick={() => handleOpenAddRoom(cat)}
+                          onClick={() => handleOpenAddRoom(cat, null)}
                           className="text-[11px] font-mono text-stone-500 hover:text-[#B48A28] transition-colors flex items-center space-x-1"
                         >
                           <Plus className="w-3 h-3" />
@@ -1701,6 +1785,84 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
                     </div>
                   );
                 })}
+
+                {/* Rooms with no category assigned */}
+                {filteredRooms.some((r) => !(r.category || '').trim()) && (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between pb-2 border-b border-stone-200">
+                      <div className="flex items-center space-x-2.5">
+                        <div className="w-6 h-6 rounded-full bg-stone-100 border border-stone-200 flex items-center justify-center font-mono text-[10px] text-stone-500 font-semibold">
+                          <Layers className="w-3.5 h-3.5 text-stone-500" />
+                        </div>
+                        <h2 className="font-display text-lg tracking-wide text-stone-700 font-medium">
+                          Uncategorized
+                        </h2>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      {filteredRooms.filter((r) => !(r.category || '').trim()).map((room) => renderRoomCard(room))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : viewGrouping === 'floor' && selectedFloorFilter === 'all' && !searchQuery.trim() ? (
+              // GROUPED BY FLOOR VIEW
+              <div className="space-y-10">
+                {activeFloors.map((flr) => {
+                  const floorRooms = filteredRooms.filter((r) => (r.floor || '').trim() === flr);
+                  if (floorRooms.length === 0) return null;
+
+                  return (
+                    <div key={flr} className="space-y-4">
+                      <div className="flex items-center justify-between pb-2 border-b border-stone-200">
+                        <div className="flex items-center space-x-2.5">
+                          <div className="w-6 h-6 rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center font-mono text-[10px] text-[#B48A28] font-semibold">
+                            <Building2 className="w-3.5 h-3.5 text-[#B48A28]" />
+                          </div>
+                          
+                          <h2 className="font-display text-lg tracking-wide text-stone-900 font-medium">
+                            {flr}
+                          </h2>
+
+                          <span className="text-xs font-mono text-stone-500">
+                            ({floorRooms.length} {floorRooms.length === 1 ? 'Room' : 'Rooms'})
+                          </span>
+                        </div>
+
+                        <button
+                          onClick={() => handleOpenAddRoom(null, flr)}
+                          className="text-[11px] font-mono text-stone-500 hover:text-[#B48A28] transition-colors flex items-center space-x-1"
+                        >
+                          <Plus className="w-3 h-3" />
+                          <span>Add Room on {flr}</span>
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {floorRooms.map((room) => renderRoomCard(room))}
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* Rooms with no floor assigned */}
+                {filteredRooms.some((r) => !(r.floor || '').trim()) && (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between pb-2 border-b border-stone-200">
+                      <div className="flex items-center space-x-2.5">
+                        <div className="w-6 h-6 rounded-full bg-stone-100 border border-stone-200 flex items-center justify-center font-mono text-[10px] text-stone-500 font-semibold">
+                          <Building2 className="w-3.5 h-3.5 text-stone-500" />
+                        </div>
+                        <h2 className="font-display text-lg tracking-wide text-stone-700 font-medium">
+                          Unassigned Floor
+                        </h2>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      {filteredRooms.filter((r) => !(r.floor || '').trim()).map((room) => renderRoomCard(room))}
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               // STANDARD FLAT GRID
@@ -1745,9 +1907,11 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
           setRoomFormModalOpen(false);
           setRoomToEdit(null);
           setInitialCategoryForAdd(null);
+          setInitialFloorForAdd(null);
         }}
         roomToEdit={roomToEdit}
         initialCategory={initialCategoryForAdd}
+        initialFloor={initialFloorForAdd}
         onSave={handleSaveRoom}
       />
 

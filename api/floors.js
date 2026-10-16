@@ -70,36 +70,45 @@ export function getMongoConfig() {
 async function getDatabase() {
   const config = getMongoConfig();
   if (!config.hasEnv || !config.uri) {
-    return { db: null, error: 'No MongoDB URI configured.', config };
+    const hintMsg = config.hint ? ` (${config.hint})` : '';
+    return { db: null, error: `No MongoDB URI found in environment variables${hintMsg}. Please add MONGODB_URI in Vercel.`, config };
   }
 
-  if (cachedClient && cachedDb) {
+  // Reuse global singleton client promise if already connecting or connected
+  if (global._mongoClientPromise) {
     try {
-      await cachedDb.command({ ping: 1 });
-      return { db: cachedDb, error: null, config };
+      const client = await global._mongoClientPromise;
+      const db = client.db(process.env.MONGODB_DB_NAME || 'polaris_hotel');
+      return { db, error: null, config };
     } catch (e) {
-      cachedClient = null;
-      cachedDb = null;
+      global._mongoClientPromise = null;
     }
   }
 
   try {
     const client = new MongoClient(config.uri, {
-      maxPoolSize: 10,
+      maxPoolSize: 1, // Crucial for Serverless: exactly 1 socket per lambda instance
+      minPoolSize: 0, // Drop connections when idle
+      maxIdleTimeMS: 5000, // Close idle socket after 5s of inactivity
       serverSelectionTimeoutMS: 5000,
       connectTimeoutMS: 5000,
-      socketTimeoutMS: 10000,
-      authSource: 'admin'
+      socketTimeoutMS: 15000,
+      authSource: 'admin',
+      retryWrites: true,
+      retryReads: true
     });
-    await client.connect();
-    const db = client.db(process.env.MONGODB_DB_NAME || 'polaris_hotel');
-    cachedClient = client;
-    cachedDb = db;
-    lastDbError = null;
+
+    global._mongoClientPromise = client.connect().catch((connectErr) => {
+      global._mongoClientPromise = null;
+      throw connectErr;
+    });
+
+    const clientInst = await global._mongoClientPromise;
+    const db = clientInst.db(process.env.MONGODB_DB_NAME || 'polaris_hotel');
     return { db, error: null, config };
   } catch (err) {
+    global._mongoClientPromise = null;
     console.error('MongoDB connection error in /api/floors:', err);
-    lastDbError = err.message;
     return { db: null, error: err.message, config };
   }
 }
@@ -128,10 +137,23 @@ export default async function handler(req, res) {
     // -----------------------------------------------------------------------
     if (req.method === 'GET') {
       if (floorsCol) {
+        const now = Date.now();
+
+        // Micro-cache (3 seconds) to absorb concurrent traffic spikes
+        if (global._cachedFloorsData && (now - (global._cachedFloorsTime || 0) < 3000)) {
+          return res.status(200).json({
+            success: true,
+            data: global._cachedFloorsData,
+            source: 'mongodb-cache',
+            dbConnected: true,
+            envDetected: !!mongoConfig?.hasEnv
+          });
+        }
+
         let storedFloors = await floorsCol.find({}).sort({ name: 1 }).toArray();
 
-        // Auto-discover any floors already existing on room documents
-        if (roomsCol) {
+        // Auto-discover floors from room documents ONLY ONCE if floors collection is completely empty
+        if (storedFloors.length === 0 && roomsCol) {
           try {
             const roomFloors = await roomsCol.distinct('floor');
             const candidateNames = roomFloors.filter(
@@ -164,6 +186,9 @@ export default async function handler(req, res) {
         }
 
         const sanitized = storedFloors.map(({ _id, ...rest }) => rest);
+        global._cachedFloorsData = sanitized;
+        global._cachedFloorsTime = now;
+
         return res.status(200).json({
           success: true,
           data: sanitized,
@@ -188,6 +213,10 @@ export default async function handler(req, res) {
     // POST: Create a new custom floor
     // -----------------------------------------------------------------------
     if (req.method === 'POST') {
+      global._cachedFloorsData = null;
+      global._cachedFloorsTime = 0;
+      global._cachedRoomsData = null;
+      global._cachedRoomsTime = 0;
       const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
       const rawName = body?.name;
 
@@ -265,6 +294,10 @@ export default async function handler(req, res) {
     // DELETE: Delete a custom floor
     // -----------------------------------------------------------------------
     if (req.method === 'DELETE') {
+      global._cachedFloorsData = null;
+      global._cachedFloorsTime = 0;
+      global._cachedRoomsData = null;
+      global._cachedRoomsTime = 0;
       const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
       const id = body?.id || req.query?.id;
       const name = body?.name || req.query?.name;

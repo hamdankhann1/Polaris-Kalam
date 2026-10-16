@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Layers, Plus, Trash2, Check, AlertCircle, Sparkles } from 'lucide-react';
+import { X, Layers, Plus, Trash2, Check, AlertCircle, Sparkles, Edit3 } from 'lucide-react';
 import { CategoryService } from '../../services/categoryService';
 
 /**
@@ -7,7 +7,7 @@ import { CategoryService } from '../../services/categoryService';
  * CategoryManagerModal Component
  * =========================================================================
  * 
- * Allows hotel managers to define, inspect, and delete custom room categories.
+ * Allows hotel managers to define, inspect, rename, and delete custom room categories.
  * All changes persist directly to MongoDB Atlas.
  */
 export default function CategoryManagerModal({
@@ -24,6 +24,11 @@ export default function CategoryManagerModal({
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [deletingId, setDeletingId] = useState(null);
+
+  // Renaming state
+  const [editingCatId, setEditingCatId] = useState(null);
+  const [editingName, setEditingName] = useState('');
+  const [isRenaming, setIsRenaming] = useState(false);
 
   const handleAddCategory = async (e) => {
     e.preventDefault();
@@ -48,9 +53,47 @@ export default function CategoryManagerModal({
     }
   };
 
+  const handleStartRename = (cat) => {
+    setEditingCatId(cat.id || cat.name);
+    setEditingName(cat.name);
+    setError('');
+    setSuccess('');
+  };
+
+  const handleCancelRename = () => {
+    setEditingCatId(null);
+    setEditingName('');
+  };
+
+  const handleSaveRename = async (cat) => {
+    if (!editingName.trim()) {
+      setError('Category name cannot be empty.');
+      return;
+    }
+    if (editingName.trim() === cat.name) {
+      setEditingCatId(null);
+      return;
+    }
+
+    setIsRenaming(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      await CategoryService.renameCategory(cat.id || cat.name, editingName.trim());
+      setSuccess(`Category renamed to "${editingName.trim()}".`);
+      setEditingCatId(null);
+      if (onCategoryUpdated) onCategoryUpdated();
+    } catch (err) {
+      setError(err.message || 'Failed to rename category.');
+    } finally {
+      setIsRenaming(false);
+    }
+  };
+
   const handleDeleteCategory = async (cat) => {
     const roomCount = rooms.filter(
-      (r) => (r.category || r.floor || '').trim().toLowerCase() === cat.name.trim().toLowerCase()
+      (r) => (r.category || '').trim().toLowerCase() === cat.name.trim().toLowerCase()
     ).length;
 
     if (roomCount > 0) {
@@ -157,38 +200,88 @@ export default function CategoryManagerModal({
           ) : (
             categories.map((cat) => {
               const count = rooms.filter(
-                (r) => (r.category || r.floor || '').trim().toLowerCase() === cat.name.trim().toLowerCase()
+                (r) => (r.category || '').trim().toLowerCase() === cat.name.trim().toLowerCase()
               ).length;
               const isDeleting = deletingId === (cat.id || cat.name);
+              const isEditingThis = editingCatId === (cat.id || cat.name);
 
               return (
                 <div
                   key={cat.id || cat.name}
-                  className="flex items-center justify-between p-3.5 rounded-xl bg-stone-50 border border-stone-200 hover:border-amber-300 transition-colors"
+                  className="p-3.5 rounded-xl bg-stone-50 border border-stone-200 hover:border-amber-300 transition-colors space-y-2"
                 >
-                  <div className="flex items-center space-x-3 min-w-0">
-                    <div className="w-7 h-7 rounded-lg bg-amber-50 border border-amber-200 flex items-center justify-center text-[#B48A28] shrink-0">
-                      <Layers className="w-3.5 h-3.5" />
+                  {isEditingThis ? (
+                    <div className="flex items-center space-x-2">
+                      <div className="w-7 h-7 rounded-lg bg-amber-50 border border-amber-200 flex items-center justify-center text-[#B48A28] shrink-0">
+                        <Edit3 className="w-3.5 h-3.5" />
+                      </div>
+                      <input
+                        type="text"
+                        value={editingName}
+                        onChange={(e) => setEditingName(e.target.value)}
+                        placeholder="Category name"
+                        className="flex-1 bg-white border border-amber-400 rounded-lg px-3 py-1.5 text-sm text-stone-900 font-semibold focus:outline-none focus:ring-1 focus:ring-amber-500"
+                        autoFocus
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleSaveRename(cat);
+                          if (e.key === 'Escape') handleCancelRename();
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleSaveRename(cat)}
+                        disabled={isRenaming || !editingName.trim()}
+                        className="p-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition-colors shrink-0 shadow-2xs"
+                        title="Save name"
+                      >
+                        <Check className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleCancelRename}
+                        className="p-2 rounded-lg bg-stone-200 hover:bg-stone-300 text-stone-600 transition-colors shrink-0"
+                        title="Cancel"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
                     </div>
-                    <div className="min-w-0">
-                      <h4 className="text-sm font-semibold text-stone-900 truncate">
-                        {cat.name}
-                      </h4>
-                      <p className="text-[11px] font-mono text-stone-500">
-                        {count} {count === 1 ? 'room assigned' : 'rooms assigned'}
-                      </p>
-                    </div>
-                  </div>
+                  ) : (
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3 min-w-0">
+                        <div className="w-7 h-7 rounded-lg bg-amber-50 border border-amber-200 flex items-center justify-center text-[#B48A28] shrink-0">
+                          <Layers className="w-3.5 h-3.5" />
+                        </div>
+                        <div className="min-w-0">
+                          <h4 className="text-sm font-semibold text-stone-900 truncate">
+                            {cat.name}
+                          </h4>
+                          <p className="text-[11px] font-mono text-stone-500">
+                            {count} {count === 1 ? 'room assigned' : 'rooms assigned'}
+                          </p>
+                        </div>
+                      </div>
 
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteCategory(cat)}
-                    disabled={isDeleting}
-                    className="p-2 rounded-lg text-stone-400 hover:text-rose-600 hover:bg-rose-50 transition-colors shrink-0"
-                    title={`Delete category "${cat.name}"`}
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                      <div className="flex items-center space-x-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => handleStartRename(cat)}
+                          className="p-2 rounded-lg text-stone-500 hover:text-[#B48A28] hover:bg-amber-50 transition-colors"
+                          title={`Rename category "${cat.name}"`}
+                        >
+                          <Edit3 className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteCategory(cat)}
+                          disabled={isDeleting}
+                          className="p-2 rounded-lg text-stone-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                          title={`Delete category "${cat.name}"`}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })

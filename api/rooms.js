@@ -273,33 +273,41 @@ async function getDatabase() {
     return { db: null, error: `No MongoDB URI found in environment variables${hintMsg}. Please add MONGODB_URI in Vercel.`, config };
   }
 
-  if (cachedClient && cachedDb) {
+  // Reuse global singleton client promise if already connecting or connected
+  if (global._mongoClientPromise) {
     try {
-      await cachedDb.command({ ping: 1 });
-      return { db: cachedDb, error: null, config };
+      const client = await global._mongoClientPromise;
+      const db = client.db(process.env.MONGODB_DB_NAME || 'polaris_hotel');
+      return { db, error: null, config };
     } catch (e) {
-      cachedClient = null;
-      cachedDb = null;
+      global._mongoClientPromise = null;
     }
   }
 
   try {
     const client = new MongoClient(config.uri, {
-      maxPoolSize: 10,
+      maxPoolSize: 1, // Crucial for Serverless: exactly 1 socket per lambda instance
+      minPoolSize: 0, // Drop connections when idle
+      maxIdleTimeMS: 5000, // Close idle socket after 5s of inactivity
       serverSelectionTimeoutMS: 5000,
       connectTimeoutMS: 5000,
-      socketTimeoutMS: 10000,
-      authSource: 'admin'
+      socketTimeoutMS: 15000,
+      authSource: 'admin',
+      retryWrites: true,
+      retryReads: true
     });
-    await client.connect();
-    const db = client.db(process.env.MONGODB_DB_NAME || 'polaris_hotel');
-    cachedClient = client;
-    cachedDb = db;
-    lastDbError = null;
+
+    global._mongoClientPromise = client.connect().catch((connectErr) => {
+      global._mongoClientPromise = null;
+      throw connectErr;
+    });
+
+    const clientInst = await global._mongoClientPromise;
+    const db = clientInst.db(process.env.MONGODB_DB_NAME || 'polaris_hotel');
     return { db, error: null, config };
   } catch (err) {
+    global._mongoClientPromise = null;
     console.error('MongoDB connection error in /api/rooms:', err);
-    lastDbError = err.message;
     return { db: null, error: err.message, config };
   }
 }
@@ -322,9 +330,8 @@ export default async function handler(req, res) {
     const { db, error: dbError, config: mongoConfig } = await getDatabase();
     const collection = db ? db.collection('rooms') : null;
 
-    // Ensure MongoDB has rooms seeded ONLY on brand new uninitialized database setup
-    // If the admin intentionally clears out rooms, we NEVER re-seed them!
-    if (collection) {
+    // Ensure MongoDB has rooms seeded and indexed ONLY ONCE per process lifecycle
+    if (collection && !global._roomsDbInitialized) {
       try {
         const metadataCol = db.collection('system_metadata');
         const meta = await metadataCol.findOne({ key: 'has_seeded_initial_rooms' });
@@ -343,6 +350,7 @@ export default async function handler(req, res) {
         collection.createIndex({ roomNumber: 1 }).catch(() => {});
         collection.createIndex({ category: 1 }).catch(() => {});
         collection.createIndex({ floor: 1 }).catch(() => {});
+        global._roomsDbInitialized = true;
       } catch (seedErr) {
         console.warn('MongoDB initial room seed warning:', seedErr.message);
       }
@@ -353,13 +361,24 @@ export default async function handler(req, res) {
     // -----------------------------------------------------------------------
     if (req.method === 'GET') {
       if (collection) {
-        // Automatically declutter unwanted past booked ranges older than 3 months (90 days)
-        // STRICT SAFETY: Rooms and their specifications (price, amenities, tier, capacity) are PERMANENT and NEVER DELETED!
-        // ONLY the expired past date block from months ago is pruned from the bookedRanges array.
-        const ninetyDaysAgoYMD = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        // Micro-cache (2 seconds) to absorb concurrent traffic spikes without pounding Atlas
+        const now = Date.now();
+        if (global._cachedRoomsData && (now - (global._cachedRoomsTime || 0) < 2000)) {
+          return res.status(200).json({
+            success: true,
+            data: global._cachedRoomsData,
+            source: 'mongodb-cache',
+            dbConnected: true,
+            envDetected: !!mongoConfig?.hasEnv,
+            envKey: mongoConfig?.keyName || null
+          });
+        }
 
-        try {
-          await collection.updateMany(
+        // Run expired date cleanup at most once every 6 hours per serverless instance
+        if (!global._lastRoomPurgeTime || now - global._lastRoomPurgeTime > 6 * 3600 * 1000) {
+          global._lastRoomPurgeTime = now;
+          const ninetyDaysAgoYMD = new Date(now - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+          collection.updateMany(
             {},
             {
               $pull: {
@@ -368,13 +387,14 @@ export default async function handler(req, res) {
                 }
               }
             }
-          );
-        } catch (purgeErr) {
-          console.warn('MongoDB room purge warning in /api/rooms:', purgeErr.message);
+          ).catch((e) => console.warn('Purge warning:', e.message));
         }
 
         const rooms = await collection.find({}).sort({ roomNumber: 1 }).toArray();
         const sanitized = rooms.map(({ _id, ...rest }) => rest);
+        global._cachedRoomsData = sanitized;
+        global._cachedRoomsTime = now;
+
         return res.status(200).json({
           success: true,
           data: sanitized,
@@ -409,6 +429,8 @@ export default async function handler(req, res) {
     // PUT: Update room status, price, or specifications directly in database
     // -----------------------------------------------------------------------
     if (req.method === 'PUT') {
+      global._cachedRoomsData = null;
+      global._cachedRoomsTime = 0;
       const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
       const { id, ...updates } = body || {};
 
@@ -441,6 +463,8 @@ export default async function handler(req, res) {
     // POST: Add new room OR Reset inventory
     // -----------------------------------------------------------------------
     if (req.method === 'POST') {
+      global._cachedRoomsData = null;
+      global._cachedRoomsTime = 0;
       const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
       
       // Reset database inventory to default initial suites
@@ -483,6 +507,8 @@ export default async function handler(req, res) {
     // DELETE: Delete room OR Clear all rooms
     // -----------------------------------------------------------------------
     if (req.method === 'DELETE') {
+      global._cachedRoomsData = null;
+      global._cachedRoomsTime = 0;
       const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
       const id = body?.id || req.query?.id;
       const all = body?.all === true || req.query?.all === 'true';

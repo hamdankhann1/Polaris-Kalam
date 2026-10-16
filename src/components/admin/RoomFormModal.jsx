@@ -17,7 +17,7 @@ import { FloorService } from '../../services/floorService';
  * - Guest Capacity & Bed Type
  * - Architectural Amenities
  */
-export default function RoomFormModal({ isOpen, onClose, roomToEdit = null, initialCategory = null, onSave }) {
+export default function RoomFormModal({ isOpen, onClose, roomToEdit = null, initialCategory = null, initialFloor = null, onSave }) {
   if (!isOpen) return null;
 
   const isEditing = Boolean(roomToEdit);
@@ -25,7 +25,7 @@ export default function RoomFormModal({ isOpen, onClose, roomToEdit = null, init
   const [roomNumber, setRoomNumber] = useState('');
   const [name, setName] = useState('');
   const [category, setCategory] = useState(initialCategory || '');
-  const [floor, setFloor] = useState('');
+  const [floor, setFloor] = useState(initialFloor || '');
   const [pricePKR, setPricePKR] = useState(45000);
   const [capacity, setCapacity] = useState('2 Guests • 1 King Bed');
   const [amenities, setAmenities] = useState('Panoramic Mountain View, Heated Floors, Private Bath');
@@ -78,9 +78,9 @@ export default function RoomFormModal({ isOpen, onClose, roomToEdit = null, init
     if (roomToEdit) {
       setRoomNumber(roomToEdit.roomNumber || '');
       setName(roomToEdit.name || '');
-      const existingCategory = (roomToEdit.category || roomToEdit.tier || roomToEdit.floor || '').trim();
+      const existingCategory = (roomToEdit.category || roomToEdit.tier || '').trim();
       setCategory(existingCategory);
-      setFloor(roomToEdit.floor || '');
+      setFloor((roomToEdit.floor || '').trim());
       setPricePKR(roomToEdit.pricePKR || 45000);
       setCapacity(roomToEdit.capacity || '2 Guests • 1 King Bed');
       setAmenities(
@@ -95,7 +95,8 @@ export default function RoomFormModal({ isOpen, onClose, roomToEdit = null, init
       // Default to initialCategory or first category if available
       const defaultCat = (initialCategory || customCategories[0]?.name || '').trim();
       setCategory(defaultCat);
-      setFloor(customFloors[0]?.name || '');
+      const defaultFlr = (initialFloor || customFloors[0]?.name || 'Floor 1').trim();
+      setFloor(defaultFlr);
       setPricePKR(45000);
       setCapacity('2 Guests • 1 King Bed');
       setAmenities('Panoramic Mountain View, Heated Floors, Private Bath');
@@ -106,7 +107,7 @@ export default function RoomFormModal({ isOpen, onClose, roomToEdit = null, init
     setIsAddingFloor(false);
     setNewFloorName('');
     setError('');
-  }, [roomToEdit, isOpen, initialCategory]);
+  }, [roomToEdit, isOpen, initialCategory, initialFloor]);
 
   // Keep category and floor synchronized as soon as customCategories/customFloors resolve asynchronously
   useEffect(() => {
@@ -117,11 +118,13 @@ export default function RoomFormModal({ isOpen, onClose, roomToEdit = null, init
         setCategory(customCategories[0].name);
       }
 
-      if (!floor && customFloors.length > 0) {
+      if (initialFloor && customFloors.some((f) => f.name === initialFloor)) {
+        setFloor(initialFloor);
+      } else if (!floor && customFloors.length > 0) {
         setFloor(customFloors[0].name);
       }
     }
-  }, [customCategories, customFloors, initialCategory, roomToEdit]);
+  }, [customCategories, customFloors, initialCategory, initialFloor, roomToEdit]);
 
   const handleQuickAddCategory = async (e) => {
     e?.preventDefault();
@@ -200,7 +203,7 @@ export default function RoomFormModal({ isOpen, onClose, roomToEdit = null, init
         name: name.trim(),
         category: selectedCat,
         tier: selectedCat, // Keep in sync for compatibility
-        floor: (floor || customFloors[0]?.name || selectedCat || 'Floor 1').trim(),
+        floor: (floor || customFloors[0]?.name || 'Floor 1').trim(),
         pricePKR: Number(pricePKR),
         capacity: capacity.trim(),
         amenities: amenities.split(',').map((s) => s.trim()).filter(Boolean),

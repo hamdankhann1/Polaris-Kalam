@@ -10,6 +10,9 @@
 
 let cachedFloors = [];
 const listeners = new Set();
+let inFlightFloorsPromise = null;
+let lastFloorsFetchTime = 0;
+const FLOORS_CACHE_TTL_MS = 10000; // 10-second in-memory throttle for read queries
 
 function notifyListeners(floors) {
   listeners.forEach((listener) => {
@@ -40,28 +43,44 @@ export const FloorService = {
    * Fetch all custom floors from database
    */
   async getFloors(force = false) {
-    try {
-      const res = await fetch(`/api/floors?t=${Date.now()}`, {
-        cache: 'no-store',
-        headers: {
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache'
-        }
-      });
-
-      if (res.ok) {
-        const json = await res.json();
-        if (json.success && Array.isArray(json.data)) {
-          cachedFloors = json.data;
-          notifyListeners(cachedFloors);
-          return [...cachedFloors];
-        }
-      }
-    } catch (e) {
-      console.warn('[FloorService] API unreachable:', e);
+    const now = Date.now();
+    if (!force && cachedFloors.length > 0 && (now - lastFloorsFetchTime < FLOORS_CACHE_TTL_MS)) {
+      return [...cachedFloors];
     }
 
-    return [...cachedFloors];
+    if (inFlightFloorsPromise) {
+      return inFlightFloorsPromise;
+    }
+
+    inFlightFloorsPromise = (async () => {
+      try {
+        const res = await fetch(`/api/floors?t=${Date.now()}`, {
+          cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache'
+          }
+        });
+
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success && Array.isArray(json.data)) {
+            cachedFloors = json.data;
+            lastFloorsFetchTime = Date.now();
+            notifyListeners(cachedFloors);
+            return [...cachedFloors];
+          }
+        }
+      } catch (e) {
+        console.warn('[FloorService] API unreachable:', e);
+      } finally {
+        inFlightFloorsPromise = null;
+      }
+
+      return [...cachedFloors];
+    })();
+
+    return inFlightFloorsPromise;
   },
 
   /**
@@ -119,13 +138,18 @@ export const FloorService = {
   }
 };
 
-// Automatic real-time background sync
+// Initial real-time load and debounced focus sync
 if (typeof window !== 'undefined') {
   FloorService.getFloors().catch(() => {});
 
-  setInterval(() => {
-    if (document.visibilityState === 'visible') {
+  let lastFocusSync = Date.now();
+  const handleRefocus = () => {
+    if (document.visibilityState === 'visible' && Date.now() - lastFocusSync > 15000) {
+      lastFocusSync = Date.now();
       FloorService.getFloors().catch(() => {});
     }
-  }, 5000);
+  };
+  window.addEventListener('visibilitychange', handleRefocus);
+  window.addEventListener('focus', handleRefocus);
 }
+

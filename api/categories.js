@@ -70,36 +70,45 @@ export function getMongoConfig() {
 async function getDatabase() {
   const config = getMongoConfig();
   if (!config.hasEnv || !config.uri) {
-    return { db: null, error: 'No MongoDB URI configured.', config };
+    const hintMsg = config.hint ? ` (${config.hint})` : '';
+    return { db: null, error: `No MongoDB URI found in environment variables${hintMsg}. Please add MONGODB_URI in Vercel.`, config };
   }
 
-  if (cachedClient && cachedDb) {
+  // Reuse global singleton client promise if already connecting or connected
+  if (global._mongoClientPromise) {
     try {
-      await cachedDb.command({ ping: 1 });
-      return { db: cachedDb, error: null, config };
+      const client = await global._mongoClientPromise;
+      const db = client.db(process.env.MONGODB_DB_NAME || 'polaris_hotel');
+      return { db, error: null, config };
     } catch (e) {
-      cachedClient = null;
-      cachedDb = null;
+      global._mongoClientPromise = null;
     }
   }
 
   try {
     const client = new MongoClient(config.uri, {
-      maxPoolSize: 10,
+      maxPoolSize: 1, // Crucial for Serverless: exactly 1 socket per lambda instance
+      minPoolSize: 0, // Drop connections when idle
+      maxIdleTimeMS: 5000, // Close idle socket after 5s of inactivity
       serverSelectionTimeoutMS: 5000,
       connectTimeoutMS: 5000,
-      socketTimeoutMS: 10000,
-      authSource: 'admin'
+      socketTimeoutMS: 15000,
+      authSource: 'admin',
+      retryWrites: true,
+      retryReads: true
     });
-    await client.connect();
-    const db = client.db(process.env.MONGODB_DB_NAME || 'polaris_hotel');
-    cachedClient = client;
-    cachedDb = db;
-    lastDbError = null;
+
+    global._mongoClientPromise = client.connect().catch((connectErr) => {
+      global._mongoClientPromise = null;
+      throw connectErr;
+    });
+
+    const clientInst = await global._mongoClientPromise;
+    const db = clientInst.db(process.env.MONGODB_DB_NAME || 'polaris_hotel');
     return { db, error: null, config };
   } catch (err) {
+    global._mongoClientPromise = null;
     console.error('MongoDB connection error in /api/categories:', err);
-    lastDbError = err.message;
     return { db: null, error: err.message, config };
   }
 }
@@ -107,7 +116,7 @@ async function getDatabase() {
 export default async function handler(req, res) {
   // CORS & Strict Real-Time No-Cache Headers
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.setHeader('Pragma', 'no-cache');
@@ -128,42 +137,47 @@ export default async function handler(req, res) {
     // -----------------------------------------------------------------------
     if (req.method === 'GET') {
       if (categoriesCol) {
+        const now = Date.now();
+
+        // Micro-cache (3 seconds) to absorb concurrent traffic spikes
+        if (global._cachedCategoriesData && (now - (global._cachedCategoriesTime || 0) < 3000)) {
+          return res.status(200).json({
+            success: true,
+            data: global._cachedCategoriesData,
+            source: 'mongodb-cache',
+            dbConnected: true,
+            envDetected: !!mongoConfig?.hasEnv
+          });
+        }
+
         let storedCategories = await categoriesCol.find({}).sort({ name: 1 }).toArray();
 
-        // Auto-discover any categories already existing on room documents
-        if (roomsCol) {
+        // Initial one-time seeding only if collection is completely empty
+        if (storedCategories.length === 0 && roomsCol) {
           try {
             const roomCategories = await roomsCol.distinct('category');
-            const roomFloors = await roomsCol.distinct('floor');
-            const candidateNames = Array.from(new Set([...roomCategories, ...roomFloors]))
-              .filter((n) => typeof n === 'string' && n.trim().length > 0);
+            const candidateNames = roomCategories
+              .filter((n) => typeof n === 'string' && n.trim().length > 0 && !n.toLowerCase().startsWith('floor'));
 
-            const existingNamesLower = new Set(storedCategories.map((c) => c.name.toLowerCase()));
-            const toInsert = [];
-
-            for (const name of candidateNames) {
-              const trimmed = name.trim();
-              if (!existingNamesLower.has(trimmed.toLowerCase())) {
-                const newCat = {
-                  id: 'cat-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
-                  name: trimmed,
-                  createdAt: new Date().toISOString()
-                };
-                toInsert.push(newCat);
-                existingNamesLower.add(trimmed.toLowerCase());
-              }
-            }
+            const toInsert = candidateNames.map((name) => ({
+              id: 'cat-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+              name: name.trim(),
+              createdAt: new Date().toISOString()
+            }));
 
             if (toInsert.length > 0) {
               await categoriesCol.insertMany(toInsert);
               storedCategories = await categoriesCol.find({}).sort({ name: 1 }).toArray();
             }
           } catch (discoverErr) {
-            console.warn('Auto-discover categories error:', discoverErr.message);
+            console.warn('Initial categories seed error:', discoverErr.message);
           }
         }
 
         const sanitized = storedCategories.map(({ _id, ...rest }) => rest);
+        global._cachedCategoriesData = sanitized;
+        global._cachedCategoriesTime = now;
+
         return res.status(200).json({
           success: true,
           data: sanitized,
@@ -188,6 +202,8 @@ export default async function handler(req, res) {
     // POST: Create a new custom category
     // -----------------------------------------------------------------------
     if (req.method === 'POST') {
+      global._cachedCategoriesData = null;
+      global._cachedCategoriesTime = 0;
       const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
       const rawName = body?.name;
 
@@ -262,9 +278,91 @@ export default async function handler(req, res) {
     }
 
     // -----------------------------------------------------------------------
+    // PUT: Rename / Update a custom category
+    // -----------------------------------------------------------------------
+    if (req.method === 'PUT') {
+      global._cachedCategoriesData = null;
+      global._cachedCategoriesTime = 0;
+      global._cachedRoomsData = null;
+      global._cachedRoomsTime = 0;
+      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+      const id = body?.id;
+      const oldName = body?.oldName || body?.name;
+      const newName = body?.newName;
+      const description = body?.description;
+
+      if (!newName || !newName.trim()) {
+        return res.status(400).json({ success: false, error: 'New category name is required.' });
+      }
+
+      const trimmedNew = newName.trim();
+      const filter = {};
+      if (id) filter.id = id;
+      else if (oldName) filter.name = { $regex: new RegExp(`^${oldName.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') };
+      else {
+        return res.status(400).json({ success: false, error: 'Category ID or Old Name required.' });
+      }
+
+      if (categoriesCol) {
+        const existing = await categoriesCol.findOne(filter);
+        const prevName = existing?.name || oldName;
+
+        await categoriesCol.updateOne(filter, {
+          $set: {
+            name: trimmedNew,
+            ...(description !== undefined ? { description: description.trim() } : {}),
+            updatedAt: new Date().toISOString()
+          }
+        });
+
+        // Cascade rename to all rooms using this category!
+        if (roomsCol && prevName) {
+          const prevRegex = new RegExp(`^${prevName.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+          await roomsCol.updateMany(
+            { category: { $regex: prevRegex } },
+            { $set: { category: trimmedNew, tier: trimmedNew, updatedAt: new Date().toISOString() } }
+          );
+        }
+
+        const updated = await categoriesCol.findOne({ name: trimmedNew });
+        const sanitized = updated ? (({ _id, ...rest }) => rest)(updated) : { id, name: trimmedNew };
+        return res.status(200).json({
+          success: true,
+          data: sanitized,
+          source: 'mongodb',
+          dbConnected: true
+        });
+      }
+
+      // In-Memory Fallback
+      const idx = fallbackCategories.findIndex((c) => {
+        if (id && c.id === id) return true;
+        if (oldName && c.name.toLowerCase() === oldName.trim().toLowerCase()) return true;
+        return false;
+      });
+
+      if (idx !== -1) {
+        fallbackCategories[idx].name = trimmedNew;
+        if (description !== undefined) fallbackCategories[idx].description = description.trim();
+        return res.status(200).json({
+          success: true,
+          data: fallbackCategories[idx],
+          source: 'memory',
+          dbConnected: false
+        });
+      }
+
+      return res.status(404).json({ success: false, error: 'Category not found.' });
+    }
+
+    // -----------------------------------------------------------------------
     // DELETE: Delete a custom category
     // -----------------------------------------------------------------------
     if (req.method === 'DELETE') {
+      global._cachedCategoriesData = null;
+      global._cachedCategoriesTime = 0;
+      global._cachedRoomsData = null;
+      global._cachedRoomsTime = 0;
       const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
       const id = body?.id || req.query?.id;
       const name = body?.name || req.query?.name;
@@ -278,7 +376,20 @@ export default async function handler(req, res) {
       if (name) filter.name = { $regex: new RegExp(`^${name.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') };
 
       if (categoriesCol) {
+        const catToDelete = await categoriesCol.findOne(filter);
+        const delName = catToDelete?.name || name;
+
         const result = await categoriesCol.deleteOne(filter);
+
+        // Also clean up any rooms that had this category name
+        if (roomsCol && delName) {
+          const regex = new RegExp(`^${delName.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+          await roomsCol.updateMany(
+            { category: { $regex: regex } },
+            { $set: { category: '', updatedAt: new Date().toISOString() } }
+          );
+        }
+
         return res.status(200).json({
           success: true,
           deletedCount: result.deletedCount,

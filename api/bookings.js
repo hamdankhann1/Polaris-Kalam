@@ -93,33 +93,41 @@ async function getDatabase() {
     return { db: null, error: `No MongoDB URI found in environment variables${hintMsg}. Please add MONGODB_URI in Vercel.`, config };
   }
 
-  if (cachedClient && cachedDb) {
+  // Reuse global singleton client promise if already connecting or connected
+  if (global._mongoClientPromise) {
     try {
-      await cachedDb.command({ ping: 1 });
-      return { db: cachedDb, error: null, config };
+      const client = await global._mongoClientPromise;
+      const db = client.db(process.env.MONGODB_DB_NAME || 'polaris_hotel');
+      return { db, error: null, config };
     } catch (e) {
-      cachedClient = null;
-      cachedDb = null;
+      global._mongoClientPromise = null;
     }
   }
 
   try {
     const client = new MongoClient(config.uri, {
-      maxPoolSize: 10,
+      maxPoolSize: 1, // Crucial for Serverless: exactly 1 socket per lambda instance
+      minPoolSize: 0, // Drop connections when idle
+      maxIdleTimeMS: 5000, // Close idle socket after 5s of inactivity
       serverSelectionTimeoutMS: 5000,
       connectTimeoutMS: 5000,
-      socketTimeoutMS: 10000,
-      authSource: 'admin'
+      socketTimeoutMS: 15000,
+      authSource: 'admin',
+      retryWrites: true,
+      retryReads: true
     });
-    await client.connect();
-    const db = client.db(process.env.MONGODB_DB_NAME || 'polaris_hotel');
-    cachedClient = client;
-    cachedDb = db;
-    lastDbError = null;
+
+    global._mongoClientPromise = client.connect().catch((connectErr) => {
+      global._mongoClientPromise = null;
+      throw connectErr;
+    });
+
+    const clientInst = await global._mongoClientPromise;
+    const db = clientInst.db(process.env.MONGODB_DB_NAME || 'polaris_hotel');
     return { db, error: null, config };
   } catch (err) {
+    global._mongoClientPromise = null;
     console.error('MongoDB connection error in /api/bookings:', err);
-    lastDbError = err.message;
     return { db: null, error: err.message, config };
   }
 }
@@ -142,11 +150,12 @@ export default async function handler(req, res) {
     const { db, error: dbError, config: mongoConfig } = await getDatabase();
     const collection = db ? db.collection('booking_requests') : null;
 
-    // Database index optimization
-    if (collection) {
+    // Database index optimization - run once per serverless process lifecycle
+    if (collection && !global._bookingsDbInitialized) {
       try {
         collection.createIndex({ createdAt: -1 }).catch(() => {});
         collection.createIndex({ status: 1, checkOut: 1 }).catch(() => {});
+        global._bookingsDbInitialized = true;
       } catch (e) {}
     }
 
@@ -155,33 +164,48 @@ export default async function handler(req, res) {
     // -----------------------------------------------------------------------
     if (req.method === 'GET') {
       if (collection) {
-        // Safe 3-month cleanup:
-        // STRICT SAFETY RULES:
-        // 1. NEVER delete 'pending', 'approved', or 'contacted' requests!
-        // 2. Only declutter unwanted records ('declined', 'cancelled', or 'completed')
-        // 3. AND record must be strictly older than 3 months (90 days)
-        // 4. Room details and active inventory are completely protected in a separate collection.
-        const ninetyDaysAgoYMD = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-        const ninetyDaysAgoISO = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+        const now = Date.now();
 
-        try {
-          // Remove legacy placeholder IDs if present
-          await collection.deleteMany({ id: { $in: DEMO_REQUEST_IDS } });
-
-          // Safe declutter of unwanted, non-active requests older than 3 months (90 days)
-          await collection.deleteMany({
-            status: { $in: ['declined', 'cancelled', 'completed'] },
-            $or: [
-              { checkOut: { $exists: true, $type: 'string', $regex: /^\d{4}-\d{2}-\d{2}/, $lt: ninetyDaysAgoYMD } },
-              { createdAt: { $exists: true, $lt: ninetyDaysAgoISO } }
-            ]
+        // Micro-cache (2 seconds) to absorb concurrent traffic spikes
+        if (global._cachedBookingsData && (now - (global._cachedBookingsTime || 0) < 2000)) {
+          return res.status(200).json({
+            success: true,
+            data: global._cachedBookingsData,
+            source: 'mongodb-cache',
+            dbConnected: true,
+            envDetected: !!mongoConfig?.hasEnv,
+            envKey: mongoConfig?.keyName || null
           });
-        } catch (e) {
-          console.warn('MongoDB 3-month purge warning in /api/bookings:', e.message);
+        }
+
+        // Safe 3-month cleanup: run at most once every 6 hours per serverless instance
+        if (!global._lastBookingsPurgeTime || now - global._lastBookingsPurgeTime > 6 * 3600 * 1000) {
+          global._lastBookingsPurgeTime = now;
+          const ninetyDaysAgoYMD = new Date(now - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+          const ninetyDaysAgoISO = new Date(now - 90 * 24 * 60 * 60 * 1000).toISOString();
+
+          try {
+            // Remove legacy placeholder IDs if present
+            await collection.deleteMany({ id: { $in: DEMO_REQUEST_IDS } });
+
+            // Safe declutter of unwanted, non-active requests older than 3 months (90 days)
+            await collection.deleteMany({
+              status: { $in: ['declined', 'cancelled', 'completed'] },
+              $or: [
+                { checkOut: { $exists: true, $type: 'string', $regex: /^\d{4}-\d{2}-\d{2}/, $lt: ninetyDaysAgoYMD } },
+                { createdAt: { $exists: true, $lt: ninetyDaysAgoISO } }
+              ]
+            });
+          } catch (e) {
+            console.warn('MongoDB 3-month purge warning in /api/bookings:', e.message);
+          }
         }
 
         const bookings = await collection.find({}).sort({ createdAt: -1 }).toArray();
         const sanitized = bookings.map(({ _id, ...rest }) => rest);
+        global._cachedBookingsData = sanitized;
+        global._cachedBookingsTime = now;
+
         return res.status(200).json({
           success: true,
           data: sanitized,
@@ -221,6 +245,8 @@ export default async function handler(req, res) {
     // POST: Create a new booking request OR Reset requests
     // -----------------------------------------------------------------------
     if (req.method === 'POST') {
+      global._cachedBookingsData = null;
+      global._cachedBookingsTime = 0;
       const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
       
       // Reset booking requests
@@ -277,6 +303,8 @@ export default async function handler(req, res) {
     // PUT: Update status or notes of a booking request
     // -----------------------------------------------------------------------
     if (req.method === 'PUT') {
+      global._cachedBookingsData = null;
+      global._cachedBookingsTime = 0;
       const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
       const { id, status, staffNote } = body || {};
 
@@ -312,6 +340,8 @@ export default async function handler(req, res) {
     // DELETE: Remove a booking request OR Purge all
     // -----------------------------------------------------------------------
     if (req.method === 'DELETE') {
+      global._cachedBookingsData = null;
+      global._cachedBookingsTime = 0;
       const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
       const id = body?.id || req.query?.id;
       const purgeAll = body?.all === true || req.query?.all === 'true';

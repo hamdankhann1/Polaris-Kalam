@@ -125,12 +125,12 @@ export default function BookingPage({
     };
     document.addEventListener("visibilitychange", handleVisibility);
 
-    // 3. Active 3-second database polling (syncs room status/locks across phones & laptops live)
+    // 3. Relaxed 30-second database polling (syncs room status/locks across phones & laptops live)
     const pollInterval = setInterval(() => {
       if (document.visibilityState === "visible") {
         handleFocus();
       }
-    }, 3000);
+    }, 30000);
 
     return () => {
       unsubRooms();
@@ -615,43 +615,34 @@ export default function BookingPage({
                   key={cat.id || cat.name}
                   className={`relative rounded-2xl bg-white border flex flex-col justify-between overflow-hidden transition-all duration-300 group hover:translate-y-[-2px] ${
                     isTop
-                      ? "border-amber-300 shadow-[0_4px_25px_rgba(180,138,40,0.12)] hover:shadow-[0_12px_32px_rgba(180,138,40,0.18)]"
-                      : "border-stone-200/90 hover:border-amber-300 shadow-xs hover:shadow-md"
+                      ? "border-amber-300/80 shadow-[0_4px_25px_rgba(180,138,40,0.10)] hover:shadow-[0_12px_32px_rgba(180,138,40,0.16)]"
+                      : "border-stone-200/80 hover:border-[#B48A28]/40 shadow-2xs hover:shadow-md"
                   }`}
                 >
                   {/* Card Header & Content */}
                   <div className="p-5 sm:p-7 space-y-5">
-                    {/* Top Row: Tier badge, Total suites count badge & Live status */}
+                    {/* Top Row: Tier badge & Live status */}
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center space-x-2 min-w-0">
-                        <span
-                          className={`font-mono text-xs sm:text-sm px-3 py-1 rounded font-bold truncate ${
-                            isTop
-                              ? "bg-[#B48A28] text-white"
-                              : "bg-stone-100 text-stone-900 border border-stone-300"
-                          }`}
-                        >
+                        <span className="font-mono text-[11px] uppercase tracking-widest text-[#B48A28] font-bold truncate">
                           {cat.tier}
                         </span>
-
-                        <span className="text-xs font-mono text-stone-600 font-semibold px-2 py-0.5 rounded bg-stone-50 border border-stone-200 shrink-0">
-                          {cat.floors && cat.floors.length > 1
-                            ? `${cat.floors.length} Levels`
-                            : cat.floor
-                            ? `Level: ${cat.floor}`
-                            : "1 Suite Type"}
-                        </span>
+                        {cat.floors && cat.floors.length > 1 && (
+                          <span className="text-[11px] font-mono text-stone-400 font-normal">
+                            • {cat.floors.length} Levels
+                          </span>
+                        )}
                       </div>
 
                       {/* Live status badge */}
                       {hasAvailableNow ? (
-                        <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-mono uppercase tracking-wider bg-emerald-50 border border-emerald-300 text-emerald-800 font-bold shrink-0">
-                          <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                        <span className="inline-flex items-center space-x-1.5 text-xs font-mono text-emerald-700 font-medium shrink-0">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                           <span>Available</span>
                         </span>
                       ) : (
-                        <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-mono uppercase tracking-wider bg-amber-50 border border-amber-300 text-amber-900 font-bold shrink-0">
-                          <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                        <span className="inline-flex items-center space-x-1.5 text-xs font-mono text-amber-700 font-medium shrink-0">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
                           <span>Turnover</span>
                         </span>
                       )}
@@ -662,40 +653,39 @@ export default function BookingPage({
                       <h3 className="font-display text-2xl sm:text-3xl text-stone-900 font-medium group-hover:text-[#B48A28] transition-colors leading-snug">
                         {cat.name}
                       </h3>
-                      <p className="text-xs sm:text-sm text-stone-600 mt-1.5 font-medium">
+                      <p className="text-xs sm:text-sm text-stone-500 mt-1.5 font-normal">
                         {cat.capacity}
                       </p>
                       {cat.floors && cat.floors.length > 1 ? (
-                        <div className="flex items-center space-x-1.5 text-[11px] font-mono text-stone-600 mt-2 bg-stone-100 px-2.5 py-1 rounded-md border border-stone-200 w-fit">
-                          <Building2 className="w-3.5 h-3.5 text-[#B48A28] shrink-0" />
-                          <span className="font-semibold text-stone-800">Available on:</span>
-                          <span>{cat.floors.join(" • ")}</span>
+                        <div className="flex items-center space-x-1.5 text-[11px] font-mono text-stone-500 mt-2.5">
+                          <Building2 className="w-3.5 h-3.5 text-[#B48A28]/80 shrink-0" />
+                          <span>Available on: {cat.floors.join(" • ")}</span>
                         </div>
                       ) : cat.floor ? (
-                        <p className="text-[11px] font-mono text-stone-500 mt-1">
+                        <p className="text-[11px] font-mono text-stone-400 mt-1">
                           Level: {cat.floor}
                         </p>
                       ) : null}
                     </div>
 
                     {/* Nightly Allocation Price Tag */}
-                    <div className="pt-3 pb-2.5 border-t border-b border-stone-200/90 flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1.5">
-                      <span className="text-[11px] sm:text-xs font-mono uppercase tracking-wider text-stone-500 font-medium">
+                    <div className="pt-3 pb-3 border-t border-b border-stone-100 flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1.5">
+                      <span className="text-[11px] font-mono uppercase tracking-wider text-stone-400 font-medium">
                         Nightly Rate
                       </span>
                       <div className="flex flex-wrap items-baseline gap-1 sm:gap-1.5">
                         {cat.minPrice !== cat.maxPrice && (
-                          <span className="text-xs sm:text-sm font-sans font-medium text-stone-500">
+                          <span className="text-xs font-sans text-stone-400 font-normal">
                             From
                           </span>
                         )}
-                        <span className="text-xs sm:text-sm font-sans font-bold text-stone-700 tracking-tight">
+                        <span className="text-xs font-sans font-bold text-stone-700 tracking-tight">
                           PKR
                         </span>
-                        <span className="text-2xl sm:text-3xl font-sans font-bold text-[#8A661C] tracking-tight">
+                        <span className="text-2xl sm:text-3xl font-sans font-bold text-stone-900 tracking-tight">
                           {cat.minPrice.toLocaleString()}
                         </span>
-                        <span className="text-xs sm:text-sm font-sans text-stone-500 font-normal">
+                        <span className="text-xs font-sans text-stone-400 font-normal">
                           / night
                         </span>
                       </div>
@@ -703,21 +693,21 @@ export default function BookingPage({
 
                     {/* Key Amenities */}
                     <div className="space-y-2">
-                      <span className="text-xs font-mono uppercase tracking-wider text-stone-700 font-bold block">
-                        Category Amenities:
+                      <span className="text-[11px] font-mono uppercase tracking-wider text-stone-400 font-medium block">
+                        Suite Amenities
                       </span>
                       <div className="flex flex-wrap gap-1.5 sm:gap-2">
-                        {cat.amenities.slice(0, 5).map((item, idx) => (
+                        {cat.amenities.slice(0, 4).map((item, idx) => (
                           <span
                             key={idx}
-                            className="text-xs px-2.5 py-1 rounded-md bg-stone-100 border border-stone-200 text-stone-800 font-medium"
+                            className="text-xs px-2.5 py-1 rounded-md bg-stone-50 border border-stone-200/60 text-stone-600 font-normal"
                           >
                             {item}
                           </span>
                         ))}
-                        {cat.amenities.length > 5 && (
-                          <span className="text-xs px-2 py-1 rounded-md bg-amber-50 text-amber-800 font-mono font-semibold">
-                            +{cat.amenities.length - 5} more
+                        {cat.amenities.length > 4 && (
+                          <span className="text-xs px-2 py-1 rounded-md bg-amber-50/80 text-amber-900 font-mono text-[11px] font-medium">
+                            +{cat.amenities.length - 4} more
                           </span>
                         )}
                       </div>
@@ -725,18 +715,18 @@ export default function BookingPage({
                   </div>
 
                   {/* Card Action Button */}
-                  <div className="p-5 sm:p-7 pt-0 space-y-1.5">
+                  <div className="p-5 sm:p-7 pt-0 space-y-2">
                     <button
                       onClick={() => handleOpenBooking(cat)}
-                      className="w-full py-3.5 rounded-xl text-xs sm:text-sm font-mono uppercase tracking-wider bg-[#B48A28] hover:bg-[#9E7719] text-white font-bold transition-all flex items-center justify-center space-x-2 shadow-sm hover:shadow-md"
+                      className="w-full py-3.5 rounded-xl text-xs sm:text-sm font-mono uppercase tracking-wider bg-stone-900 hover:bg-[#B48A28] text-white font-semibold transition-all duration-300 flex items-center justify-center space-x-2 shadow-2xs hover:shadow-md cursor-pointer"
                     >
-                      <Calendar className="w-4 h-4 text-white" />
+                      <Calendar className="w-4 h-4 text-white/80" />
                       <span>Select Dates & Check Availability</span>
-                      <ArrowRight className="w-4 h-4" />
+                      <ArrowRight className="w-4 h-4 text-white/80" />
                     </button>
-                    <p className="text-[10.5px] font-mono text-stone-500 text-center">
+                    <p className="text-[10px] font-mono text-stone-400 text-center tracking-wider">
                       {cat.floors && cat.floors.length > 1
-                        ? `Available across ${cat.floors.length} distinct hotel levels`
+                        ? `Available across ${cat.floors.length} hotel levels`
                         : `Instant confirmation for ${cat.floor || "Polaris Suite"}`}
                     </p>
                   </div>
@@ -1004,50 +994,58 @@ export default function BookingPage({
                         Choose your preferred room level or let our system allocate the best available suite:
                       </p>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                      <div className="space-y-2.5 w-full flex flex-col pt-1">
                         {/* Option 1: Best Available / No Preference */}
                         <button
                           type="button"
                           onClick={() => setSelectedFloorPreference('')}
-                          className={`p-3.5 rounded-xl text-left border transition-all text-xs font-mono cursor-pointer flex flex-col justify-between ${
+                          className={`w-full p-3.5 sm:p-4 rounded-xl text-left border transition-all text-xs font-mono cursor-pointer flex items-center justify-between gap-3 ${
                             !selectedFloorPreference
-                              ? 'bg-stone-900 text-white border-stone-900 font-bold shadow-xs ring-2 ring-stone-900/20'
-                              : 'bg-stone-50 text-stone-700 border-stone-200 hover:border-amber-300'
+                              ? 'bg-stone-900 text-white border-stone-900 font-bold shadow-xs ring-1 ring-stone-900/30'
+                              : 'bg-stone-50/80 hover:bg-stone-100 text-stone-700 border-stone-200'
                           }`}
                         >
-                          <div>
-                            <div className="font-semibold flex items-center justify-between">
-                              <span className="text-sm">Best Available</span>
+                          <div className="flex items-center space-x-3 min-w-0">
+                            {/* Radio Circle */}
+                            <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
+                              !selectedFloorPreference
+                                ? 'border-amber-400 bg-amber-400'
+                                : 'border-stone-300 bg-white'
+                            }`}>
                               {!selectedFloorPreference && (
-                                <span className="flex items-center space-x-1 text-amber-400 font-bold text-[11px]">
-                                  <Check className="w-3.5 h-3.5" />
-                                  <span>Selected</span>
-                                </span>
+                                <div className="w-1.5 h-1.5 rounded-full bg-stone-900" />
                               )}
                             </div>
-                            <div className={`text-[10.5px] mt-1 ${!selectedFloorPreference ? 'text-stone-300' : 'text-stone-500'}`}>
-                              Automated allocation • Best value suite
+
+                            <div className="min-w-0">
+                              <div className="flex items-center space-x-2">
+                                <span className="font-semibold text-sm tracking-tight truncate">
+                                  Best Available Suite
+                                </span>
+                                {!selectedFloorPreference && (
+                                  <span className="text-[10px] uppercase font-bold text-amber-400 bg-stone-800 px-2 py-0.5 rounded-full">
+                                    Recommended
+                                  </span>
+                                )}
+                              </div>
+                              <p className={`text-[11px] truncate mt-0.5 ${!selectedFloorPreference ? 'text-stone-300' : 'text-stone-500'}`}>
+                                {!selectedFloorPreference && currentAssignedRoom?.floor
+                                  ? `Allocated on ${currentAssignedRoom.floor} • Best value suite`
+                                  : 'Automated allocation • System allocates best suite'}
+                              </p>
                             </div>
                           </div>
 
-                          <div className={`mt-3 pt-2 border-t flex items-center justify-between ${
-                            !selectedFloorPreference ? 'border-stone-700' : 'border-stone-200'
-                          }`}>
-                            <span className="text-[10.5px] opacity-80">
-                              {!selectedFloorPreference && currentAssignedRoom?.floor
-                                ? `Allocated on ${currentAssignedRoom.floor}`
-                                : 'Automated allocation'}
+                          {/* Right side: Rate */}
+                          <div className="flex items-baseline space-x-1 shrink-0 font-mono text-right">
+                            <span className="text-[10px] font-bold opacity-80">PKR</span>
+                            <span className={`text-sm sm:text-base font-bold ${!selectedFloorPreference ? 'text-amber-400' : 'text-[#8A661C]'}`}>
+                              {(!selectedFloorPreference
+                                ? currentNightlyPrice
+                                : selectedCategory.minPrice
+                              ).toLocaleString()}
                             </span>
-                            <div className="flex items-baseline space-x-1">
-                              <span className="text-[10px] font-bold">PKR</span>
-                              <span className={`text-sm font-bold ${!selectedFloorPreference ? 'text-amber-400' : 'text-[#8A661C]'}`}>
-                                {(!selectedFloorPreference
-                                  ? currentNightlyPrice
-                                  : selectedCategory.minPrice
-                                ).toLocaleString()}
-                              </span>
-                              <span className="text-[10px] opacity-80">/ night</span>
-                            </div>
+                            <span className="text-[10px] opacity-75">/ night</span>
                           </div>
                         </button>
 
@@ -1057,7 +1055,6 @@ export default function BookingPage({
                           const availableCount = availableRoomsForRange.filter(
                             (r) => (r.floor || '').trim().toLowerCase() === opt.name.trim().toLowerCase()
                           ).length;
-                          const totalCount = opt.rooms.length;
                           const isSoldOut = Boolean(checkIn && checkOut && availableCount === 0);
                           const priceDiff = opt.pricePKR - selectedCategory.minPrice;
 
@@ -1065,65 +1062,76 @@ export default function BookingPage({
                             <button
                               key={opt.id}
                               type="button"
+                              disabled={isSoldOut}
                               onClick={() => setSelectedFloorPreference(opt.name)}
-                              className={`p-3.5 rounded-xl text-left border transition-all text-xs font-mono cursor-pointer flex flex-col justify-between ${
+                              className={`w-full p-3.5 sm:p-4 rounded-xl text-left border transition-all text-xs font-mono cursor-pointer flex items-center justify-between gap-3 ${
                                 isSelected
-                                  ? 'bg-[#B48A28] text-white border-[#B48A28] font-bold shadow-xs ring-2 ring-[#B48A28]/30'
+                                  ? 'bg-[#B48A28] text-white border-[#B48A28] font-bold shadow-xs ring-1 ring-[#B48A28]/40'
                                   : isSoldOut
-                                  ? 'bg-stone-50 text-stone-400 border-stone-200 opacity-70'
-                                  : 'bg-stone-50 text-stone-700 border-stone-200 hover:border-amber-300'
+                                  ? 'bg-stone-50 text-stone-400 border-stone-200 opacity-60 cursor-not-allowed'
+                                  : 'bg-stone-50/80 hover:bg-stone-100 text-stone-700 border-stone-200'
                               }`}
                             >
-                              <div>
-                                <div className="font-semibold flex items-center justify-between">
-                                  <span className="text-sm">{opt.name}</span>
-                                  {isSelected ? (
-                                    <span className="flex items-center space-x-1 text-white font-bold text-[11px]">
-                                      <Check className="w-3.5 h-3.5" />
-                                      <span>Selected</span>
-                                    </span>
-                                  ) : isSoldOut ? (
-                                    <span className="text-rose-600 font-bold text-[10px] uppercase">
-                                      Sold Out
-                                    </span>
-                                  ) : null}
-                                </div>
-                                <div className={`text-[10.5px] mt-1 ${isSelected ? 'text-amber-100' : 'text-stone-500'}`}>
-                                  {checkIn && checkOut
-                                    ? isSoldOut
-                                      ? 'Occupied for selected stay'
-                                      : 'Available for selected stay'
-                                    : 'Available on this level'}
-                                </div>
-                              </div>
-
-                              <div className={`mt-3 pt-2 border-t flex items-center justify-between ${
-                                isSelected ? 'border-amber-400/40' : 'border-stone-200'
-                              }`}>
-                                <div>
-                                  {priceDiff > 0 ? (
-                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                                      isSelected ? 'bg-amber-900/40 text-amber-100' : 'bg-amber-100 text-amber-900'
-                                    }`}>
-                                      +PKR {priceDiff.toLocaleString()}
-                                    </span>
-                                  ) : priceDiff === 0 && selectedCategory.minPrice !== selectedCategory.maxPrice ? (
-                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                                      isSelected ? 'bg-emerald-900/40 text-emerald-100' : 'bg-emerald-100 text-emerald-800'
-                                    }`}>
-                                      Best Value
-                                    </span>
-                                  ) : (
-                                    <span className="text-[10px] opacity-75">Nightly Rate</span>
+                              <div className="flex items-center space-x-3 min-w-0">
+                                {/* Radio Circle */}
+                                <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
+                                  isSelected
+                                    ? 'border-white bg-white'
+                                    : 'border-stone-300 bg-white'
+                                }`}>
+                                  {isSelected && (
+                                    <div className="w-1.5 h-1.5 rounded-full bg-[#B48A28]" />
                                   )}
                                 </div>
 
-                                <div className="flex items-baseline space-x-1">
-                                  <span className="text-[10px] font-bold">PKR</span>
-                                  <span className={`text-sm font-bold ${isSelected ? 'text-white' : 'text-[#8A661C]'}`}>
+                                <div className="min-w-0">
+                                  <div className="flex items-center space-x-2">
+                                    <span className="font-semibold text-sm tracking-tight truncate">
+                                      {opt.name}
+                                    </span>
+                                    {isSelected ? (
+                                      <span className="text-[10px] uppercase font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded-full">
+                                        Selected
+                                      </span>
+                                    ) : isSoldOut ? (
+                                      <span className="text-[10px] uppercase font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+                                        Sold Out
+                                      </span>
+                                    ) : null}
+                                  </div>
+
+                                  <p className={`text-[11px] truncate mt-0.5 ${isSelected ? 'text-amber-100' : 'text-stone-500'}`}>
+                                    {checkIn && checkOut
+                                      ? isSoldOut
+                                        ? 'Occupied for selected stay'
+                                        : 'Available for selected stay'
+                                      : 'Available on this level'}
+                                  </p>
+                                </div>
+                              </div>
+
+                              {/* Right side: Price diff pill + Rate */}
+                              <div className="flex items-center space-x-2.5 shrink-0 text-right">
+                                {priceDiff > 0 ? (
+                                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                    isSelected ? 'bg-amber-900/40 text-amber-100' : 'bg-amber-100 text-amber-900'
+                                  }`}>
+                                    +PKR {priceDiff.toLocaleString()}
+                                  </span>
+                                ) : priceDiff === 0 && selectedCategory.minPrice !== selectedCategory.maxPrice ? (
+                                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                    isSelected ? 'bg-emerald-900/40 text-emerald-100' : 'bg-emerald-100 text-emerald-800'
+                                  }`}>
+                                    Best Value
+                                  </span>
+                                ) : null}
+
+                                <div className="flex items-baseline space-x-1 font-mono">
+                                  <span className="text-[10px] font-bold opacity-80">PKR</span>
+                                  <span className={`text-sm sm:text-base font-bold ${isSelected ? 'text-white' : 'text-[#8A661C]'}`}>
                                     {opt.pricePKR.toLocaleString()}
                                   </span>
-                                  <span className="text-[10px] opacity-80">/ night</span>
+                                  <span className="text-[10px] opacity-75">/ night</span>
                                 </div>
                               </div>
                             </button>

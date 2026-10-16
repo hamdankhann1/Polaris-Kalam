@@ -455,6 +455,9 @@ if (typeof window !== 'undefined') {
 
 let cachedRooms = [];
 let lastDbConnection = { dbConnected: false, source: 'unknown', dbError: null, lastSyncedAt: null };
+let inFlightRoomsPromise = null;
+let lastRoomsFetchTime = 0;
+const ROOMS_CACHE_TTL_MS = 5000; // 5-second in-memory throttle for read queries
 
 export const RoomService = {
   /**
@@ -474,58 +477,76 @@ export const RoomService = {
    * Ensures mobile phones, laptops, and staff desks see the exact same database inventory.
    */
   async getRooms(force = false) {
-    try {
-      const res = await fetch(`/api/rooms?t=${Date.now()}`, {
-        cache: 'no-store',
-        headers: {
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache'
-        }
-      });
-      if (res.ok) {
-        const json = await res.json();
-        lastDbConnection = {
-          dbConnected: Boolean(json.dbConnected || json.source === 'mongodb'),
-          source: json.source || (json.dbConnected ? 'mongodb' : 'memory'),
-          dbError: json.dbError || null,
-          envDetected: Boolean(json.envDetected),
-          envKey: json.envKey || null,
-          lastSyncedAt: new Date().toISOString()
-        };
+    const now = Date.now();
+    // 1. If fresh data was fetched within TTL and force is not set, return cached copy immediately
+    if (!force && cachedRooms.length > 0 && (now - lastRoomsFetchTime < ROOMS_CACHE_TTL_MS)) {
+      return [...cachedRooms];
+    }
 
-        if (json.success && Array.isArray(json.data)) {
-          const cleaned = json.data.map(cleanRoom);
-          cachedRooms = cleaned;
-          notifyListeners(cleaned);
-          return [...cleaned];
+    // 2. Deduplicate in-flight promises: if already fetching, reuse active promise
+    if (inFlightRoomsPromise) {
+      return inFlightRoomsPromise;
+    }
+
+    inFlightRoomsPromise = (async () => {
+      try {
+        const res = await fetch(`/api/rooms?t=${Date.now()}`, {
+          cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache'
+          }
+        });
+        if (res.ok) {
+          const json = await res.json();
+          lastDbConnection = {
+            dbConnected: Boolean(json.dbConnected || json.source === 'mongodb' || json.source === 'mongodb-cache'),
+            source: json.source || (json.dbConnected ? 'mongodb' : 'memory'),
+            dbError: json.dbError || null,
+            envDetected: Boolean(json.envDetected),
+            envKey: json.envKey || null,
+            lastSyncedAt: new Date().toISOString()
+          };
+
+          if (json.success && Array.isArray(json.data)) {
+            const cleaned = json.data.map(cleanRoom);
+            cachedRooms = cleaned;
+            lastRoomsFetchTime = Date.now();
+            notifyListeners(cleaned);
+            return [...cleaned];
+          }
+        } else {
+          const errJson = await res.json().catch(() => null);
+          lastDbConnection = {
+            dbConnected: false,
+            source: 'error',
+            dbError: errJson?.error || `HTTP ${res.status} ${res.statusText}`,
+            envDetected: false,
+            envKey: null,
+            lastSyncedAt: new Date().toISOString()
+          };
         }
-      } else {
-        const errJson = await res.json().catch(() => null);
+      } catch (e) {
+        console.warn('[RoomService] Database API unreachable:', e);
         lastDbConnection = {
           dbConnected: false,
-          source: 'error',
-          dbError: errJson?.error || `HTTP ${res.status} ${res.statusText}`,
+          source: 'network_error',
+          dbError: e.message || 'Network request failed',
           envDetected: false,
           envKey: null,
           lastSyncedAt: new Date().toISOString()
         };
+      } finally {
+        inFlightRoomsPromise = null;
       }
-    } catch (e) {
-      console.warn('[RoomService] Database API unreachable:', e);
-      lastDbConnection = {
-        dbConnected: false,
-        source: 'network_error',
-        dbError: e.message || 'Network request failed',
-        envDetected: false,
-        envKey: null,
-        lastSyncedAt: new Date().toISOString()
-      };
-    }
 
-    if (cachedRooms.length > 0) {
-      return [...cachedRooms];
-    }
-    return INITIAL_ROOMS.map(cleanRoom);
+      if (cachedRooms.length > 0) {
+        return [...cachedRooms];
+      }
+      return INITIAL_ROOMS.map(cleanRoom);
+    })();
+
+    return inFlightRoomsPromise;
   },
 
   /**
@@ -550,9 +571,9 @@ export const RoomService = {
       id: 'room-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
       roomNumber: roomData.roomNumber.trim(),
       name: roomData.name.trim(),
-      category: (roomData.category || roomData.tier || roomData.floor || 'Deluxe Room').trim(),
+      category: (roomData.category || roomData.tier || 'Deluxe Room').trim(),
       tier: (roomData.tier || roomData.category || 'Deluxe Room').trim(),
-      floor: (roomData.floor || roomData.category || '').trim(),
+      floor: (roomData.floor || 'Floor 1').trim(),
       capacity: roomData.capacity || '2 Guests • 1 King Bed',
       pricePKR: Number(roomData.pricePKR) || 45000,
       status: roomData.status || 'available',
@@ -659,6 +680,7 @@ export const RoomService = {
     if (fields.roomNumber) payload.roomNumber = fields.roomNumber.trim();
     if (fields.name) payload.name = fields.name.trim();
     if (fields.category) payload.category = fields.category.trim();
+    if (fields.floor !== undefined) payload.floor = fields.floor.trim();
     if (fields.pricePKR !== undefined) payload.pricePKR = Number(fields.pricePKR);
     if (fields.amenities) {
       payload.amenities = Array.isArray(fields.amenities)
@@ -949,14 +971,8 @@ export const RoomService = {
   }
 };
 
-// Automatic real-time background sync every 3 seconds while active
+// Real-time window focus & visibility sync (throttled by ROOMS_CACHE_TTL_MS)
 if (typeof window !== 'undefined') {
-  setInterval(() => {
-    if (document.visibilityState === 'visible') {
-      RoomService.getRooms().catch(() => {});
-    }
-  }, 3000);
-
   window.addEventListener('focus', () => {
     RoomService.getRooms().catch(() => {});
   });
