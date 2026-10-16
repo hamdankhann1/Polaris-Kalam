@@ -187,12 +187,10 @@ export default function BookingPage({
     return Array.from(floorMap.entries()).map(([floorName, floorRooms]) => {
       const minP = Math.min(...floorRooms.map((r) => Number(r.pricePKR) || 45000));
       const maxP = Math.max(...floorRooms.map((r) => Number(r.pricePKR) || 45000));
-      const roomNumbers = floorRooms.map((r) => `#${r.roomNumber}`).join(', ');
 
       return {
         id: floorName,
         name: floorName,
-        roomNumbers,
         pricePKR: minP,
         maxPricePKR: maxP,
         rooms: floorRooms
@@ -532,7 +530,7 @@ export default function BookingPage({
                   : "bg-white text-stone-700 hover:text-stone-900 border border-stone-300 shadow-2xs"
               }`}
             >
-              All Room Types ({categories.length} Categories • {rooms.length} Suites)
+              All Room Types ({categories.length} {categories.length === 1 ? "Category" : "Categories"})
             </button>
 
             {categories.map((cat) => {
@@ -554,9 +552,7 @@ export default function BookingPage({
                   {isTop && (
                     <Crown className="w-3.5 h-3.5 text-[#B48A28] shrink-0" />
                   )}
-                  <span>
-                    {cat.name} ({cat.totalRooms})
-                  </span>
+                  <span>{cat.name}</span>
                 </button>
               );
             })}
@@ -639,7 +635,11 @@ export default function BookingPage({
                         </span>
 
                         <span className="text-xs font-mono text-stone-600 font-semibold px-2 py-0.5 rounded bg-stone-50 border border-stone-200 shrink-0">
-                          {cat.totalRooms} {cat.totalRooms === 1 ? "Suite" : "Suites"}
+                          {cat.floors && cat.floors.length > 1
+                            ? `${cat.floors.length} Levels`
+                            : cat.floor
+                            ? `Level: ${cat.floor}`
+                            : "1 Suite Type"}
                         </span>
                       </div>
 
@@ -647,7 +647,7 @@ export default function BookingPage({
                       {hasAvailableNow ? (
                         <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-mono uppercase tracking-wider bg-emerald-50 border border-emerald-300 text-emerald-800 font-bold shrink-0">
                           <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                          <span>{cat.availableRoomsNow} Available</span>
+                          <span>Available</span>
                         </span>
                       ) : (
                         <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-mono uppercase tracking-wider bg-amber-50 border border-amber-300 text-amber-900 font-bold shrink-0">
@@ -735,7 +735,9 @@ export default function BookingPage({
                       <ArrowRight className="w-4 h-4" />
                     </button>
                     <p className="text-[10.5px] font-mono text-stone-500 text-center">
-                      Live occupancy computed across {cat.totalRooms} {cat.totalRooms === 1 ? "suite" : "suites"}
+                      {cat.floors && cat.floors.length > 1
+                        ? `Available across ${cat.floors.length} distinct hotel levels`
+                        : `Instant confirmation for ${cat.floor || "Polaris Suite"}`}
                     </p>
                   </div>
                 </div>
@@ -824,8 +826,11 @@ export default function BookingPage({
                       {selectedCategory.tier}
                     </span>
                     <span className="text-stone-600 font-semibold">
-                      {selectedCategory.totalRooms}{" "}
-                      {selectedCategory.totalRooms === 1 ? "Suite in Hotel" : "Suites in Hotel"}
+                      {selectedCategory.floors && selectedCategory.floors.length > 1
+                        ? `${selectedCategory.floors.length} Hotel Levels Available`
+                        : selectedCategory.floor
+                        ? `Level: ${selectedCategory.floor}`
+                        : "Polaris Suite"}
                     </span>
                   </div>
                   <h3 className="font-display text-2xl sm:text-3xl text-stone-900 font-medium pt-1">
@@ -946,22 +951,18 @@ export default function BookingPage({
                           <span className="flex items-center space-x-1.5 font-bold">
                             <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                             <span>
-                              {availableRoomsForRange.length} of {selectedCategory.totalRooms}{" "}
-                              {selectedCategory.totalRooms === 1 ? "suite" : "suites"} available for your stay
+                              {selectedCategory.floors && selectedCategory.floors.length > 1
+                                ? `Suites available across ${selectedCategory.floors.length} levels for your stay`
+                                : "Suite available for your selected stay"}
                             </span>
                           </span>
-                          {availableRoomsForRange.length === 1 && (
-                            <span className="text-amber-900 font-bold text-[10.5px] uppercase bg-amber-200/90 px-2 py-0.5 rounded shrink-0">
-                              🔥 Only 1 Suite Left!
-                            </span>
-                          )}
                         </div>
                       ) : (
                         <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-300 text-xs sm:text-sm text-rose-950 space-y-1 animate-fadeIn">
                           <div className="flex items-center space-x-1.5 font-bold text-rose-800">
                             <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
                             <span>
-                              All {selectedCategory.totalRooms} Suites in this Category are Booked
+                              All Suites in "{selectedCategory.name}" are Booked for Selected Dates
                             </span>
                           </div>
                           <p className="text-xs text-stone-600 font-normal">
@@ -985,8 +986,8 @@ export default function BookingPage({
                     />
                   </div>
 
-                  {/* Preferred Floor / Level Selection (When Category Has Multiple Rooms / Floors) */}
-                  {selectedCategory.rooms && selectedCategory.rooms.length > 1 && (
+                  {/* Preferred Floor / Level Selection (When Category Spans Multiple Floors) */}
+                  {selectedCategory.floors && selectedCategory.floors.length > 1 && (
                     <div className="pt-1 space-y-2.5">
                       <div className="flex items-center justify-between">
                         <label className="block text-xs sm:text-sm font-mono uppercase tracking-wider text-stone-800 font-bold flex items-center space-x-1.5">
@@ -1033,9 +1034,9 @@ export default function BookingPage({
                             !selectedFloorPreference ? 'border-stone-700' : 'border-stone-200'
                           }`}>
                             <span className="text-[10.5px] opacity-80">
-                              {!selectedFloorPreference && currentAssignedRoom
-                                ? `Allocates Suite #${currentAssignedRoom.roomNumber}`
-                                : 'Nightly Rate'}
+                              {!selectedFloorPreference && currentAssignedRoom?.floor
+                                ? `Allocated on ${currentAssignedRoom.floor}`
+                                : 'Automated allocation'}
                             </span>
                             <div className="flex items-baseline space-x-1">
                               <span className="text-[10px] font-bold">PKR</span>
@@ -1088,12 +1089,11 @@ export default function BookingPage({
                                   ) : null}
                                 </div>
                                 <div className={`text-[10.5px] mt-1 ${isSelected ? 'text-amber-100' : 'text-stone-500'}`}>
-                                  {opt.roomNumbers ? `${opt.roomNumbers} • ` : ''}
                                   {checkIn && checkOut
                                     ? isSoldOut
                                       ? 'Occupied for selected stay'
-                                      : `${availableCount} of ${totalCount} available`
-                                    : `${totalCount} ${totalCount === 1 ? 'suite' : 'suites'} on this level`}
+                                      : 'Available for selected stay'
+                                    : 'Available on this level'}
                                 </div>
                               </div>
 
@@ -1169,7 +1169,8 @@ export default function BookingPage({
                           ALLOCATED SUITE & LEVEL:
                         </span>
                         <span className="font-bold text-stone-900 text-xs sm:text-sm">
-                          Suite #{currentAssignedRoom.roomNumber} ({currentAssignedRoom.floor})
+                          {selectedCategory.name} • {currentAssignedRoom.floor || "Standard Level"}
+                          {isAdmin && ` (Suite #${currentAssignedRoom.roomNumber})`}
                         </span>
                       </div>
                       <div className="sm:text-right space-y-0.5 pt-1 sm:pt-0 border-t sm:border-t-0 border-stone-200">
