@@ -153,6 +153,8 @@ export default function App() {
   const handleExitAndLogout = () => {
     setIsStaffAuthenticated(false);
     sessionStorage.removeItem('polaris_staff_auth');
+    sessionStorage.removeItem('polaris_staff_token');
+    sessionStorage.removeItem('polaris_staff_key');
     setCurrentView('website');
     if (typeof window !== 'undefined') {
       try {
@@ -193,6 +195,8 @@ export default function App() {
   const handleLogout = () => {
     setIsStaffAuthenticated(false);
     sessionStorage.removeItem('polaris_staff_auth');
+    sessionStorage.removeItem('polaris_staff_token');
+    sessionStorage.removeItem('polaris_staff_key');
     setCurrentView('website');
     if (typeof window !== 'undefined') {
       try {

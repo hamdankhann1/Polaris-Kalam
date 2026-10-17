@@ -1,0 +1,16 @@
+# =========================================================================
+# POLARIS KALAM HOTEL & RESORT — ROBOTS CONFIGURATION
+# https://polarishotels.pk
+# =========================================================================
+
+User-agent: *
+Allow: /
+Allow: /booking
+
+# Confidential administrative and revenue management terminals
+Disallow: /admin
+Disallow: /revenuemasterlook
+Disallow: /api/
+
+# XML Sitemap Index
+Sitemap: https://polarishotels.pk/sitemap.xml

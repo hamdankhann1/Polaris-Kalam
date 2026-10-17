@@ -9,6 +9,13 @@
  */
 
 import { MongoClient } from 'mongodb';
+import {
+  isStaffAuthorized,
+  redactRoomPII,
+  sanitizeInput,
+  checkRateLimit,
+  applySecurityHeaders
+} from './_security.js';
 
 let cachedClient = null;
 let cachedDb = null;
@@ -313,18 +320,26 @@ async function getDatabase() {
 }
 
 export default async function handler(req, res) {
-  // CORS & Strict Real-Time No-Cache Headers (Prevents mobile devices from caching stale database responses)
+  // Apply modern security headers
+  applySecurityHeaders(res);
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-  res.setHeader('Pragma', 'no-cache');
-  res.setHeader('Expires', '0');
-  res.setHeader('Surrogate-Control', 'no-store');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-staff-token, x-admin-hash');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
+
+  // Rate Limiting (150 requests per minute per IP)
+  const rateCheck = checkRateLimit(req, 'rooms_api', 150, 60000);
+  if (!rateCheck.allowed) {
+    return res.status(429).json({
+      success: false,
+      error: `Too many requests to rooms service. Retry in ${rateCheck.retryAfter} seconds.`
+    });
+  }
+
+  const isStaff = isStaffAuthorized(req);
 
   try {
     const { db, error: dbError, config: mongoConfig } = await getDatabase();
@@ -357,17 +372,19 @@ export default async function handler(req, res) {
     }
 
     // -----------------------------------------------------------------------
-    // GET: Fetch all rooms directly from database
+    // GET: Fetch all rooms directly from database (Redacts PII for public)
     // -----------------------------------------------------------------------
     if (req.method === 'GET') {
       if (collection) {
         // Micro-cache (2 seconds) to absorb concurrent traffic spikes without pounding Atlas
         const now = Date.now();
         if (global._cachedRoomsData && (now - (global._cachedRoomsTime || 0) < 2000)) {
+          const output = isStaff ? global._cachedRoomsData : global._cachedRoomsData.map(redactRoomPII);
           return res.status(200).json({
             success: true,
-            data: global._cachedRoomsData,
+            data: output,
             source: 'mongodb-cache',
+            isStaffAuthenticated: isStaff,
             dbConnected: true,
             envDetected: !!mongoConfig?.hasEnv,
             envKey: mongoConfig?.keyName || null
@@ -395,10 +412,13 @@ export default async function handler(req, res) {
         global._cachedRoomsData = sanitized;
         global._cachedRoomsTime = now;
 
+        const output = isStaff ? sanitized : sanitized.map(redactRoomPII);
+
         return res.status(200).json({
           success: true,
-          data: sanitized,
+          data: output,
           source: 'mongodb',
+          isStaffAuthenticated: isStaff,
           dbConnected: true,
           envDetected: !!mongoConfig?.hasEnv,
           envKey: mongoConfig?.keyName || null
@@ -414,10 +434,14 @@ export default async function handler(req, res) {
           );
         }
       });
+
+      const output = isStaff ? fallbackRooms : fallbackRooms.map(redactRoomPII);
+
       return res.status(200).json({
         success: true,
-        data: fallbackRooms,
+        data: output,
         source: 'memory',
+        isStaffAuthenticated: isStaff,
         dbConnected: false,
         envDetected: !!mongoConfig?.hasEnv,
         envKey: mongoConfig?.keyName || null,
@@ -426,16 +450,32 @@ export default async function handler(req, res) {
     }
 
     // -----------------------------------------------------------------------
-    // PUT: Update room status, price, or specifications directly in database
+    // PUT: Update room status, price, or specifications (STRICTLY STAFF ONLY)
     // -----------------------------------------------------------------------
     if (req.method === 'PUT') {
+      if (!isStaff) {
+        return res.status(401).json({
+          success: false,
+          error: 'Unauthorized: Staff credentials required to modify hotel rooms.'
+        });
+      }
+
       global._cachedRoomsData = null;
       global._cachedRoomsTime = 0;
-      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+
+      let rawBody = req.body;
+      if (typeof rawBody === 'string') {
+        try {
+          rawBody = JSON.parse(rawBody);
+        } catch (e) {
+          return res.status(400).json({ success: false, error: 'Invalid JSON request format.' });
+        }
+      }
+      const body = sanitizeInput(rawBody || {});
       const { id, ...updates } = body || {};
 
-      if (!id) {
-        return res.status(400).json({ success: false, error: 'Room ID required' });
+      if (!id || typeof id !== 'string') {
+        return res.status(400).json({ success: false, error: 'Valid room ID required' });
       }
 
       updates.updatedAt = new Date().toISOString();
@@ -460,12 +500,28 @@ export default async function handler(req, res) {
     }
 
     // -----------------------------------------------------------------------
-    // POST: Add new room OR Reset inventory
+    // POST: Add new room OR Reset inventory (STRICTLY STAFF ONLY)
     // -----------------------------------------------------------------------
     if (req.method === 'POST') {
+      if (!isStaff) {
+        return res.status(401).json({
+          success: false,
+          error: 'Unauthorized: Staff credentials required to create or reset hotel rooms.'
+        });
+      }
+
       global._cachedRoomsData = null;
       global._cachedRoomsTime = 0;
-      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+
+      let rawBody = req.body;
+      if (typeof rawBody === 'string') {
+        try {
+          rawBody = JSON.parse(rawBody);
+        } catch (e) {
+          return res.status(400).json({ success: false, error: 'Invalid JSON request format.' });
+        }
+      }
+      const body = sanitizeInput(rawBody || {});
       
       // Reset database inventory to default initial suites
       if (body?.action === 'reset' || req.query?.action === 'reset') {
@@ -480,11 +536,13 @@ export default async function handler(req, res) {
         return res.status(200).json({ success: true, data: fallbackRooms, source: 'memory', dbConnected: false });
       }
 
-      if (!body) return res.status(400).json({ success: false, error: 'Room data required' });
+      if (!body || typeof body !== 'object') {
+        return res.status(400).json({ success: false, error: 'Valid room data required' });
+      }
 
       const newRoom = {
         ...body,
-        id: body.id || 'room-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+        id: String(body.id || 'room-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6)),
         updatedAt: new Date().toISOString()
       };
 
@@ -504,13 +562,29 @@ export default async function handler(req, res) {
     }
 
     // -----------------------------------------------------------------------
-    // DELETE: Delete room OR Clear all rooms
+    // DELETE: Delete room OR Clear all rooms (STRICTLY STAFF ONLY)
     // -----------------------------------------------------------------------
     if (req.method === 'DELETE') {
+      if (!isStaff) {
+        return res.status(401).json({
+          success: false,
+          error: 'Unauthorized: Staff credentials required to delete hotel rooms.'
+        });
+      }
+
       global._cachedRoomsData = null;
       global._cachedRoomsTime = 0;
-      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-      const id = body?.id || req.query?.id;
+
+      let rawBody = req.body;
+      if (typeof rawBody === 'string') {
+        try {
+          rawBody = JSON.parse(rawBody);
+        } catch (e) {
+          rawBody = {};
+        }
+      }
+      const body = sanitizeInput(rawBody || {});
+      const id = typeof body?.id === 'string' ? body.id : (typeof req.query?.id === 'string' ? req.query.id : null);
       const all = body?.all === true || req.query?.all === 'true';
 
       // 1. Clear out ALL rooms from hotel inventory
@@ -531,7 +605,7 @@ export default async function handler(req, res) {
       }
 
       // 2. Delete a single specific room
-      if (!id) return res.status(400).json({ success: false, error: 'Room ID required' });
+      if (!id) return res.status(400).json({ success: false, error: 'Valid room ID required' });
 
       if (collection) {
         await collection.deleteOne({ id });

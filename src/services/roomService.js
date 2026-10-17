@@ -447,6 +447,21 @@ if (typeof window !== 'undefined') {
 let cachedRooms = [];
 let lastDbConnection = { dbConnected: false, source: 'unknown', dbError: null, lastSyncedAt: null };
 let inFlightRoomsPromise = null;
+function getStaffAuthHeaders() {
+  if (typeof window === 'undefined') return {};
+  const token = sessionStorage.getItem('polaris_staff_token');
+  const key = sessionStorage.getItem('polaris_staff_key');
+  const headers = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+    headers['x-staff-token'] = token;
+  }
+  if (key) {
+    headers['x-admin-hash'] = key;
+  }
+  return headers;
+}
+
 let lastRoomsFetchTime = 0;
 const ROOMS_CACHE_TTL_MS = 5000; // 5-second in-memory throttle for read queries
 
@@ -485,7 +500,8 @@ export const RoomService = {
           cache: 'no-store',
           headers: {
             'Cache-Control': 'no-cache, no-store, must-revalidate',
-            'Pragma': 'no-cache'
+            'Pragma': 'no-cache',
+            ...getStaffAuthHeaders()
           }
         });
         if (res.ok) {
@@ -583,7 +599,10 @@ export const RoomService = {
 
     const res = await fetch('/api/rooms', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...getStaffAuthHeaders()
+      },
       body: JSON.stringify(newRoom)
     });
 
@@ -610,7 +629,10 @@ export const RoomService = {
     const target = cachedRooms.find((r) => r.id === roomId);
     const res = await fetch('/api/rooms', {
       method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...getStaffAuthHeaders()
+      },
       body: JSON.stringify({ id: roomId })
     });
 
@@ -632,7 +654,10 @@ export const RoomService = {
   async clearAllRooms() {
     const res = await fetch('/api/rooms', {
       method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...getStaffAuthHeaders()
+      },
       body: JSON.stringify({ all: true })
     });
 
@@ -681,7 +706,10 @@ export const RoomService = {
 
     const res = await fetch('/api/rooms', {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...getStaffAuthHeaders()
+      },
       body: JSON.stringify(payload)
     });
 
@@ -750,7 +778,10 @@ export const RoomService = {
 
     const res = await fetch('/api/rooms', {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...getStaffAuthHeaders()
+      },
       body: JSON.stringify(updates)
     });
 
@@ -872,7 +903,10 @@ export const RoomService = {
 
     const res = await fetch('/api/rooms', {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...getStaffAuthHeaders()
+      },
       body: JSON.stringify({
         id: roomId,
         bookedRanges: updatedRanges,
@@ -939,7 +973,10 @@ export const RoomService = {
 
     const res = await fetch('/api/rooms', {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...getStaffAuthHeaders()
+      },
       body: JSON.stringify(payload)
     });
 
@@ -990,7 +1027,10 @@ export const RoomService = {
 
     const res = await fetch('/api/rooms', {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...getStaffAuthHeaders()
+      },
       body: JSON.stringify(payload)
     });
 
@@ -1009,7 +1049,10 @@ export const RoomService = {
   async resetToDefaults() {
     const res = await fetch('/api/rooms', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...getStaffAuthHeaders()
+      },
       body: JSON.stringify({ action: 'reset' })
     });
 

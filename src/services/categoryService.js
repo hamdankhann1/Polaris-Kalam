@@ -30,6 +30,21 @@ function notifyListeners(categories) {
   }
 }
 
+function getStaffAuthHeaders() {
+  if (typeof window === 'undefined') return {};
+  const token = sessionStorage.getItem('polaris_staff_token');
+  const key = sessionStorage.getItem('polaris_staff_key');
+  const headers = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+    headers['x-staff-token'] = token;
+  }
+  if (key) {
+    headers['x-admin-hash'] = key;
+  }
+  return headers;
+}
+
 export const CategoryService = {
   /**
    * Subscribe to category changes
@@ -58,7 +73,8 @@ export const CategoryService = {
           cache: 'no-store',
           headers: {
             'Cache-Control': 'no-cache, no-store, must-revalidate',
-            'Pragma': 'no-cache'
+            'Pragma': 'no-cache',
+            ...getStaffAuthHeaders()
           }
         });
 
@@ -95,7 +111,10 @@ export const CategoryService = {
 
     const res = await fetch('/api/categories', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...getStaffAuthHeaders()
+      },
       body: JSON.stringify({ name: trimmed, description: description.trim() })
     });
 
@@ -126,7 +145,10 @@ export const CategoryService = {
 
     const res = await fetch('/api/categories', {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...getStaffAuthHeaders()
+      },
       body: JSON.stringify(payload)
     });
 
@@ -152,7 +174,10 @@ export const CategoryService = {
 
     const res = await fetch('/api/categories', {
       method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...getStaffAuthHeaders()
+      },
       body: JSON.stringify(payload)
     });
 

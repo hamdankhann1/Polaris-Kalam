@@ -80,6 +80,21 @@ function notifyListeners(requests) {
   }
 }
 
+function getStaffAuthHeaders() {
+  if (typeof window === 'undefined') return {};
+  const token = sessionStorage.getItem('polaris_staff_token');
+  const key = sessionStorage.getItem('polaris_staff_key');
+  const headers = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+    headers['x-staff-token'] = token;
+  }
+  if (key) {
+    headers['x-admin-hash'] = key;
+  }
+  return headers;
+}
+
 let cachedRequests = [];
 let inFlightRequestsPromise = null;
 let lastRequestsFetchTime = 0;
@@ -119,7 +134,8 @@ export const BookingRequestService = {
           headers: {
             'Accept': 'application/json',
             'Cache-Control': 'no-cache, no-store, must-revalidate',
-            'Pragma': 'no-cache'
+            'Pragma': 'no-cache',
+            ...getStaffAuthHeaders()
           }
         });
 
@@ -179,7 +195,10 @@ export const BookingRequestService = {
   async resetToDefaults() {
     const res = await fetch('/api/bookings', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...getStaffAuthHeaders()
+      },
       body: JSON.stringify({ action: 'reset' })
     });
 
@@ -224,7 +243,10 @@ export const BookingRequestService = {
 
     const res = await fetch('/api/bookings', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...getStaffAuthHeaders()
+      },
       body: JSON.stringify(newRequest)
     });
 
@@ -243,7 +265,10 @@ export const BookingRequestService = {
   async updateStatus(requestId, newStatus, note = '', extraFields = {}) {
     const res = await fetch('/api/bookings', {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...getStaffAuthHeaders()
+      },
       body: JSON.stringify({
         id: requestId,
         status: newStatus,
@@ -267,7 +292,10 @@ export const BookingRequestService = {
   async deleteRequest(requestId) {
     const res = await fetch('/api/bookings', {
       method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...getStaffAuthHeaders()
+      },
       body: JSON.stringify({ id: requestId })
     });
 

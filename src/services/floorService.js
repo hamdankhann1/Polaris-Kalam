@@ -30,6 +30,21 @@ function notifyListeners(floors) {
   }
 }
 
+function getStaffAuthHeaders() {
+  if (typeof window === 'undefined') return {};
+  const token = sessionStorage.getItem('polaris_staff_token');
+  const key = sessionStorage.getItem('polaris_staff_key');
+  const headers = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+    headers['x-staff-token'] = token;
+  }
+  if (key) {
+    headers['x-admin-hash'] = key;
+  }
+  return headers;
+}
+
 export const FloorService = {
   /**
    * Subscribe to floor changes
@@ -58,7 +73,8 @@ export const FloorService = {
           cache: 'no-store',
           headers: {
             'Cache-Control': 'no-cache, no-store, must-revalidate',
-            'Pragma': 'no-cache'
+            'Pragma': 'no-cache',
+            ...getStaffAuthHeaders()
           }
         });
 
@@ -95,7 +111,10 @@ export const FloorService = {
 
     const res = await fetch('/api/floors', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...getStaffAuthHeaders()
+      },
       body: JSON.stringify({ name: trimmed, description: description.trim() })
     });
 
@@ -124,7 +143,10 @@ export const FloorService = {
 
     const res = await fetch('/api/floors', {
       method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...getStaffAuthHeaders()
+      },
       body: JSON.stringify(payload)
     });
 

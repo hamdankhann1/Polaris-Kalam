@@ -12,6 +12,13 @@
  */
 
 import { MongoClient } from 'mongodb';
+import {
+  isStaffAuthorized,
+  redactBookingPII,
+  sanitizeInput,
+  checkRateLimit,
+  applySecurityHeaders
+} from './_security.js';
 
 let cachedClient = null;
 let cachedDb = null;
@@ -154,18 +161,27 @@ async function getDatabase() {
 }
 
 export default async function handler(req, res) {
-  // CORS & Strict Real-Time No-Cache Headers (Prevents mobile devices from caching stale database responses)
+  // Apply modern security headers
+  applySecurityHeaders(res);
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-  res.setHeader('Pragma', 'no-cache');
-  res.setHeader('Expires', '0');
-  res.setHeader('Surrogate-Control', 'no-store');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-staff-token, x-admin-hash');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
+
+  // General rate limiting (150 requests per minute per IP)
+  const rateCheck = checkRateLimit(req, 'bookings_api', 150, 60000);
+  if (!rateCheck.allowed) {
+    return res.status(429).json({
+      success: false,
+      error: `Too many requests to bookings service. Retry in ${rateCheck.retryAfter} seconds.`
+    });
+  }
+
+  // Determine whether caller possesses verified staff privileges
+  const isStaff = isStaffAuthorized(req);
 
   try {
     const { db, error: dbError, config: mongoConfig } = await getDatabase();
@@ -174,14 +190,17 @@ export default async function handler(req, res) {
     // Database index optimization - run once per serverless process lifecycle
     if (collection && !global._bookingsDbInitialized) {
       try {
+        collection.createIndex({ id: 1 }, { unique: true }).catch(() => {});
         collection.createIndex({ createdAt: -1 }).catch(() => {});
         collection.createIndex({ status: 1, checkOut: 1 }).catch(() => {});
+        collection.createIndex({ roomId: 1 }).catch(() => {});
+        collection.createIndex({ checkIn: 1, checkOut: 1 }).catch(() => {});
         global._bookingsDbInitialized = true;
       } catch (e) {}
     }
 
     // -----------------------------------------------------------------------
-    // GET: Fetch all booking requests
+    // GET: Fetch booking requests (PII is strictly redacted for public callers)
     // -----------------------------------------------------------------------
     if (req.method === 'GET') {
       if (collection) {
@@ -189,10 +208,15 @@ export default async function handler(req, res) {
 
         // Micro-cache (2 seconds) to absorb concurrent traffic spikes
         if (global._cachedBookingsData && (now - (global._cachedBookingsTime || 0) < 2000)) {
+          const cachedOutput = isStaff
+            ? global._cachedBookingsData
+            : global._cachedBookingsData.map(redactBookingPII);
+
           return res.status(200).json({
             success: true,
-            data: global._cachedBookingsData,
+            data: cachedOutput,
             source: 'mongodb-cache',
+            isStaffAuthenticated: isStaff,
             dbConnected: true,
             envDetected: !!mongoConfig?.hasEnv,
             envKey: mongoConfig?.keyName || null
@@ -227,10 +251,13 @@ export default async function handler(req, res) {
         global._cachedBookingsData = sanitized;
         global._cachedBookingsTime = now;
 
+        const responseData = isStaff ? sanitized : sanitized.map(redactBookingPII);
+
         return res.status(200).json({
           success: true,
-          data: sanitized,
+          data: responseData,
           source: 'mongodb',
+          isStaffAuthenticated: isStaff,
           dbConnected: true,
           envDetected: !!mongoConfig?.hasEnv,
           envKey: mongoConfig?.keyName || null
@@ -251,10 +278,13 @@ export default async function handler(req, res) {
         return true;
       });
 
+      const responseData = isStaff ? fallbackBookings : fallbackBookings.map(redactBookingPII);
+
       return res.status(200).json({
         success: true,
-        data: fallbackBookings,
+        data: responseData,
         source: 'memory',
+        isStaffAuthenticated: isStaff,
         dbConnected: false,
         envDetected: !!mongoConfig?.hasEnv,
         envKey: mongoConfig?.keyName || null,
@@ -266,12 +296,28 @@ export default async function handler(req, res) {
     // POST: Create a new booking request OR Reset requests
     // -----------------------------------------------------------------------
     if (req.method === 'POST') {
-      global._cachedBookingsData = null;
-      global._cachedBookingsTime = 0;
-      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-      
-      // Reset booking requests
+      let rawBody = req.body;
+      if (typeof rawBody === 'string') {
+        try {
+          rawBody = JSON.parse(rawBody);
+        } catch (e) {
+          return res.status(400).json({ success: false, error: 'Invalid JSON request format.' });
+        }
+      }
+      const body = sanitizeInput(rawBody || {});
+
+      // 1. Reset booking requests: STRICTLY STAFF ONLY
       if (body?.action === 'reset' || req.query?.action === 'reset') {
+        if (!isStaff) {
+          return res.status(401).json({
+            success: false,
+            error: 'Unauthorized: Staff credentials required to reset reservations.'
+          });
+        }
+
+        global._cachedBookingsData = null;
+        global._cachedBookingsTime = 0;
+
         if (collection) {
           await collection.deleteMany({});
           return res.status(200).json({ success: true, data: [], source: 'mongodb', dbConnected: true });
@@ -280,40 +326,65 @@ export default async function handler(req, res) {
         return res.status(200).json({ success: true, data: [], source: 'memory', dbConnected: false });
       }
 
-      if (!body) {
-        return res.status(400).json({ success: false, error: 'Request body required' });
+      // 2. Guest reservation request creation (Public or Staff)
+      // Anti-bot submission rate limit: max 20 bookings per 10 minutes per IP
+      const submitCheck = checkRateLimit(req, 'booking_create', 20, 10 * 60 * 1000);
+      if (!submitCheck.allowed) {
+        return res.status(429).json({
+          success: false,
+          error: `Booking rate limit exceeded. Please wait ${submitCheck.retryAfter} seconds before submitting again.`
+        });
       }
 
+      if (!body || typeof body !== 'object') {
+        return res.status(400).json({ success: false, error: 'Valid booking request data required' });
+      }
+
+      // Sanitize and validate fields
+      const guestName = String(body.guestName || 'VIP Guest').trim().substring(0, 100);
+      const phone = String(body.phone || '+92 300 0000000').trim().substring(0, 30);
+      const email = String(body.email || 'concierge@polarishotel.pk').trim().substring(0, 100);
+      const checkIn = String(body.checkIn || getPakistanYMD()).trim().substring(0, 10);
+      const checkOut = String(body.checkOut || addDaysYMD(checkIn, 2)).trim().substring(0, 10);
+
       const newBooking = {
-        id: body.id || 'req-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
-        guestName: (body.guestName || 'VIP Guest').trim(),
-        phone: (body.phone || '+92 300 0000000').trim(),
-        email: (body.email || 'concierge@polarishotel.pk').trim(),
-        roomId: body.roomId || 'room-custom',
-        roomNumber: body.roomNumber || '101',
-        roomName: body.roomName || 'Polaris Suite',
-        tier: body.tier || 'Executive Suite',
-        floor: body.floor || 'Floor 1',
-        preferredFloor: (body.preferredFloor || body.floor || '').trim(),
-        pricePKR: Number(body.pricePKR) || 45000,
-        checkIn: body.checkIn || getPakistanYMD(),
-        checkOut: body.checkOut || addDaysYMD(body.checkIn || getPakistanYMD(), 2),
-        nights: Number(body.nights) || 1,
-        guests: body.guests || '2 Guests',
-        notes: body.notes ? body.notes.trim() : (body.source ? `Source: ${body.source}` : ''),
-        status: body.status || 'pending',
+        id: String(body.id || 'req-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6)),
+        guestName,
+        phone,
+        email,
+        roomId: String(body.roomId || 'room-custom').substring(0, 50),
+        roomNumber: String(body.roomNumber || '101').substring(0, 20),
+        roomName: String(body.roomName || 'Polaris Suite').substring(0, 100),
+        tier: String(body.tier || 'Executive Suite').substring(0, 100),
+        floor: String(body.floor || 'Floor 1').substring(0, 50),
+        preferredFloor: String(body.preferredFloor || body.floor || '').trim().substring(0, 50),
+        pricePKR: Math.max(0, Number(body.pricePKR) || 45000),
+        checkIn,
+        checkOut,
+        nights: Math.max(1, Number(body.nights) || 1),
+        guests: String(body.guests || '2 Guests').substring(0, 50),
+        notes: body.notes ? String(body.notes).trim().substring(0, 1000) : (body.source ? `Source: ${String(body.source).substring(0, 50)}` : ''),
+        status: String(body.status || 'pending').substring(0, 30),
         createdAt: body.createdAt || new Date().toISOString()
       };
 
+      global._cachedBookingsData = null;
+      global._cachedBookingsTime = 0;
+
       if (collection) {
         await collection.insertOne({ ...newBooking });
-        return res.status(201).json({ success: true, data: newBooking, source: 'mongodb', dbConnected: true });
+        return res.status(201).json({
+          success: true,
+          data: isStaff ? newBooking : redactBookingPII(newBooking),
+          source: 'mongodb',
+          dbConnected: true
+        });
       }
 
       fallbackBookings.unshift(newBooking);
       return res.status(201).json({
         success: true,
-        data: newBooking,
+        data: isStaff ? newBooking : redactBookingPII(newBooking),
         source: 'memory',
         dbConnected: false,
         warning: 'Saved to temporary server memory only. Set MONGODB_URI in Vercel to persist permanently.'
@@ -321,24 +392,40 @@ export default async function handler(req, res) {
     }
 
     // -----------------------------------------------------------------------
-    // PUT: Update status or notes of a booking request
+    // PUT: Update status or notes of a booking request (STRICTLY STAFF ONLY)
     // -----------------------------------------------------------------------
     if (req.method === 'PUT') {
+      if (!isStaff) {
+        return res.status(401).json({
+          success: false,
+          error: 'Unauthorized: Staff credentials required to update reservations.'
+        });
+      }
+
       global._cachedBookingsData = null;
       global._cachedBookingsTime = 0;
-      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+
+      let rawBody = req.body;
+      if (typeof rawBody === 'string') {
+        try {
+          rawBody = JSON.parse(rawBody);
+        } catch (e) {
+          return res.status(400).json({ success: false, error: 'Invalid JSON request format.' });
+        }
+      }
+      const body = sanitizeInput(rawBody || {});
       const { id, status, staffNote } = body || {};
 
-      if (!id) {
-        return res.status(400).json({ success: false, error: 'Booking ID required' });
+      if (!id || typeof id !== 'string') {
+        return res.status(400).json({ success: false, error: 'Valid booking ID required' });
       }
 
       const updateFields = {
         updatedAt: new Date().toISOString()
       };
-      if (status) updateFields.status = status;
-      if (staffNote !== undefined) updateFields.staffNote = staffNote;
-      if (body.checkedOutAt) updateFields.checkedOutAt = body.checkedOutAt;
+      if (status) updateFields.status = String(status).substring(0, 30);
+      if (staffNote !== undefined) updateFields.staffNote = String(staffNote).substring(0, 1000);
+      if (body.checkedOutAt) updateFields.checkedOutAt = String(body.checkedOutAt).substring(0, 50);
 
       if (collection) {
         await collection.updateOne({ id }, { $set: updateFields });
@@ -359,13 +446,29 @@ export default async function handler(req, res) {
     }
 
     // -----------------------------------------------------------------------
-    // DELETE: Remove a booking request OR Purge all
+    // DELETE: Remove a booking request OR Purge all (STRICTLY STAFF ONLY)
     // -----------------------------------------------------------------------
     if (req.method === 'DELETE') {
+      if (!isStaff) {
+        return res.status(401).json({
+          success: false,
+          error: 'Unauthorized: Staff credentials required to delete reservations.'
+        });
+      }
+
       global._cachedBookingsData = null;
       global._cachedBookingsTime = 0;
-      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-      const id = body?.id || req.query?.id;
+
+      let rawBody = req.body;
+      if (typeof rawBody === 'string') {
+        try {
+          rawBody = JSON.parse(rawBody);
+        } catch (e) {
+          rawBody = {};
+        }
+      }
+      const body = sanitizeInput(rawBody || {});
+      const id = typeof body?.id === 'string' ? body.id : (typeof req.query?.id === 'string' ? req.query.id : null);
       const purgeAll = body?.all === true || req.query?.all === 'true';
 
       if (purgeAll) {
@@ -378,7 +481,7 @@ export default async function handler(req, res) {
       }
 
       if (!id) {
-        return res.status(400).json({ success: false, error: 'Booking ID required' });
+        return res.status(400).json({ success: false, error: 'Valid booking ID required' });
       }
 
       if (collection) {

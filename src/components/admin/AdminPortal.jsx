@@ -669,11 +669,14 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
 
       // 1. Synchronize checkout revenue to MongoDB Atlas revenue ledger
       try {
+        const staffToken = typeof window !== 'undefined' ? (sessionStorage.getItem('polaris_staff_token') || '') : '';
         await fetch('/api/revenue', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'x-cms-source': 'polaris-cms'
+            'x-cms-source': 'polaris-cms',
+            'x-staff-token': staffToken,
+            'Authorization': staffToken ? `Bearer ${staffToken}` : ''
           },
           body: JSON.stringify({
             source: 'polaris-cms',

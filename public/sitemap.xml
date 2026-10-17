@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xhtml="http://www.w3.org/1999/xhtml"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+  
+  <!-- Homepage: Polaris Luxury Hotel Kalam Swat -->
+  <url>
+    <loc>https://polarishotels.pk/</loc>
+    <lastmod>2026-10-17</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+    <image:image>
+      <image:loc>https://polarishotels.pk/polaris-hero-bg.jpg</image:loc>
+      <image:title>POLARIS Luxury Alpine Hotel Kalam Swat Valley</image:title>
+      <image:caption>Scenic view of Polaris Luxury Hotel in Kalam Valley, Swat, Pakistan</image:caption>
+    </image:image>
+    <image:image>
+      <image:loc>https://polarishotels.pk/polaris-logo.png</image:loc>
+      <image:title>POLARIS Hotel Logo</image:title>
+    </image:image>
+  </url>
+
+  <!-- Online Direct Suite Booking & Availability Portal -->
+  <url>
+    <loc>https://polarishotels.pk/booking</loc>
+    <lastmod>2026-10-17</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+    <image:image>
+      <image:loc>https://polarishotels.pk/polaris-hero-bg.jpg</image:loc>
+      <image:title>Polaris Kalam Suite Reservations</image:title>
+      <image:caption>Reserve luxury mountain view suites and penthouses at Polaris Kalam Hotel</image:caption>
+    </image:image>
+  </url>
+
+</urlset>

@@ -9,6 +9,12 @@
  */
 
 import { MongoClient } from 'mongodb';
+import {
+  isStaffAuthorized,
+  sanitizeInput,
+  checkRateLimit,
+  applySecurityHeaders
+} from './_security.js';
 
 let cachedClient = null;
 let cachedDb = null;
@@ -114,23 +120,40 @@ async function getDatabase() {
 }
 
 export default async function handler(req, res) {
-  // CORS & Strict Real-Time No-Cache Headers
+  // Apply modern security headers
+  applySecurityHeaders(res);
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-  res.setHeader('Pragma', 'no-cache');
-  res.setHeader('Expires', '0');
-  res.setHeader('Surrogate-Control', 'no-store');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-staff-token, x-admin-hash');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
 
+  // Rate Limiting (150 requests per minute per IP)
+  const rateCheck = checkRateLimit(req, 'categories_api', 150, 60000);
+  if (!rateCheck.allowed) {
+    return res.status(429).json({
+      success: false,
+      error: `Too many requests to categories service. Retry in ${rateCheck.retryAfter} seconds.`
+    });
+  }
+
+  const isStaff = isStaffAuthorized(req);
+
   try {
     const { db, error: dbError, config: mongoConfig } = await getDatabase();
     const categoriesCol = db ? db.collection('categories') : null;
     const roomsCol = db ? db.collection('rooms') : null;
+
+    // Database index optimization - run once per serverless process lifecycle
+    if (categoriesCol && !global._categoriesDbInitialized) {
+      try {
+        categoriesCol.createIndex({ id: 1 }, { unique: true }).catch(() => {});
+        categoriesCol.createIndex({ name: 1 }).catch(() => {});
+        global._categoriesDbInitialized = true;
+      } catch (e) {}
+    }
 
     // -----------------------------------------------------------------------
     // GET: Fetch all custom categories
@@ -199,19 +222,35 @@ export default async function handler(req, res) {
     }
 
     // -----------------------------------------------------------------------
-    // POST: Create a new custom category
+    // POST: Create a new custom category (STRICTLY STAFF ONLY)
     // -----------------------------------------------------------------------
     if (req.method === 'POST') {
+      if (!isStaff) {
+        return res.status(401).json({
+          success: false,
+          error: 'Unauthorized: Staff credentials required to create categories.'
+        });
+      }
+
       global._cachedCategoriesData = null;
       global._cachedCategoriesTime = 0;
-      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+
+      let rawBody = req.body;
+      if (typeof rawBody === 'string') {
+        try {
+          rawBody = JSON.parse(rawBody);
+        } catch (e) {
+          return res.status(400).json({ success: false, error: 'Invalid JSON request format.' });
+        }
+      }
+      const body = sanitizeInput(rawBody || {});
       const rawName = body?.name;
 
       if (!rawName || typeof rawName !== 'string' || !rawName.trim()) {
         return res.status(400).json({ success: false, error: 'Category name is required.' });
       }
 
-      const name = rawName.trim();
+      const name = rawName.trim().substring(0, 100);
       const description = typeof body.description === 'string' ? body.description.trim() : '';
 
       if (categoriesCol) {
@@ -278,24 +317,40 @@ export default async function handler(req, res) {
     }
 
     // -----------------------------------------------------------------------
-    // PUT: Rename / Update a custom category
+    // PUT: Rename / Update a custom category (STRICTLY STAFF ONLY)
     // -----------------------------------------------------------------------
     if (req.method === 'PUT') {
+      if (!isStaff) {
+        return res.status(401).json({
+          success: false,
+          error: 'Unauthorized: Staff credentials required to update categories.'
+        });
+      }
+
       global._cachedCategoriesData = null;
       global._cachedCategoriesTime = 0;
       global._cachedRoomsData = null;
       global._cachedRoomsTime = 0;
-      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-      const id = body?.id;
-      const oldName = body?.oldName || body?.name;
-      const newName = body?.newName;
-      const description = body?.description;
+
+      let rawBody = req.body;
+      if (typeof rawBody === 'string') {
+        try {
+          rawBody = JSON.parse(rawBody);
+        } catch (e) {
+          return res.status(400).json({ success: false, error: 'Invalid JSON request format.' });
+        }
+      }
+      const body = sanitizeInput(rawBody || {});
+      const id = typeof body?.id === 'string' ? body.id : null;
+      const oldName = typeof (body?.oldName || body?.name) === 'string' ? (body.oldName || body.name) : null;
+      const newName = typeof body?.newName === 'string' ? body.newName : null;
+      const description = typeof body?.description === 'string' ? body.description : undefined;
 
       if (!newName || !newName.trim()) {
         return res.status(400).json({ success: false, error: 'New category name is required.' });
       }
 
-      const trimmedNew = newName.trim();
+      const trimmedNew = newName.trim().substring(0, 100);
       const filter = {};
       if (id) filter.id = id;
       else if (oldName) filter.name = { $regex: new RegExp(`^${oldName.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') };
@@ -310,7 +365,7 @@ export default async function handler(req, res) {
         await categoriesCol.updateOne(filter, {
           $set: {
             name: trimmedNew,
-            ...(description !== undefined ? { description: description.trim() } : {}),
+            ...(description !== undefined ? { description: description.trim().substring(0, 500) } : {}),
             updatedAt: new Date().toISOString()
           }
         });
@@ -356,16 +411,32 @@ export default async function handler(req, res) {
     }
 
     // -----------------------------------------------------------------------
-    // DELETE: Delete a custom category
+    // DELETE: Delete a custom category (STRICTLY STAFF ONLY)
     // -----------------------------------------------------------------------
     if (req.method === 'DELETE') {
+      if (!isStaff) {
+        return res.status(401).json({
+          success: false,
+          error: 'Unauthorized: Staff credentials required to delete categories.'
+        });
+      }
+
       global._cachedCategoriesData = null;
       global._cachedCategoriesTime = 0;
       global._cachedRoomsData = null;
       global._cachedRoomsTime = 0;
-      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-      const id = body?.id || req.query?.id;
-      const name = body?.name || req.query?.name;
+
+      let rawBody = req.body;
+      if (typeof rawBody === 'string') {
+        try {
+          rawBody = JSON.parse(rawBody);
+        } catch (e) {
+          rawBody = {};
+        }
+      }
+      const body = sanitizeInput(rawBody || {});
+      const id = typeof body?.id === 'string' ? body.id : (typeof req.query?.id === 'string' ? req.query.id : null);
+      const name = typeof body?.name === 'string' ? body.name : (typeof req.query?.name === 'string' ? req.query.name : null);
 
       if (!id && !name) {
         return res.status(400).json({ success: false, error: 'Category ID or Name required for deletion.' });

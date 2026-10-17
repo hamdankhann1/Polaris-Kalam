@@ -48,13 +48,49 @@ export default function StaffLoginModal({ isOpen, onLoginSuccess, onCancel }) {
     setError('');
 
     try {
-      // Cryptographically hash the entered password
-      const inputHash = await computeSha256(password.trim());
+      // 1. Attempt server-side cryptographic authentication with brute-force lockout defense
+      let serverAuthSucceeded = false;
+      try {
+        const res = await fetch('/api/auth?action=staff-login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: password.trim() })
+        });
 
-      if (inputHash === ADMIN_PASSWORD_HASH) {
-        onLoginSuccess();
-      } else {
-        setError('Incorrect administrator security password. Access denied.');
+        const json = await res.json().catch(() => null);
+
+        if (res.ok && json?.success && json?.token) {
+          sessionStorage.setItem('polaris_staff_token', json.token);
+          sessionStorage.setItem('polaris_staff_auth', 'true');
+          serverAuthSucceeded = true;
+          onLoginSuccess(json.token);
+          return;
+        }
+
+        if (res.status === 429) {
+          setError(json?.error || 'Security Lockout: Too many failed administrator login attempts.');
+          return;
+        }
+
+        if (res.status === 401) {
+          setError(json?.error || 'Incorrect administrator security password. Access denied.');
+          return;
+        }
+      } catch (networkErr) {
+        // Serverless API might be unreachable in local preview
+        serverAuthSucceeded = false;
+      }
+
+      // 2. Client-side cryptographic fallback if API route is offline
+      if (!serverAuthSucceeded) {
+        const inputHash = await computeSha256(password.trim());
+        if (inputHash === ADMIN_PASSWORD_HASH) {
+          sessionStorage.setItem('polaris_staff_auth', 'true');
+          sessionStorage.setItem('polaris_staff_key', inputHash);
+          onLoginSuccess(inputHash);
+        } else {
+          setError('Incorrect administrator security password. Access denied.');
+        }
       }
     } catch (err) {
       console.error('Cryptographic verification failed:', err);

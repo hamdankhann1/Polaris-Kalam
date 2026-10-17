@@ -29,82 +29,23 @@
 
 import crypto from 'crypto';
 import { MongoClient } from 'mongodb';
-
-// Target Cryptographic SHA-256 Hashes
-const PORTAL_PASS_HASH = '8f08510feb936a3ff75c2c16255459150bed23671610c4d0757d83337c980a39';
-const DELETE_PASS_HASH = 'ad4f5e421139b0458296d03ff8925292a4566862d6000789b8aaf1d437968a6d';
-
-// Cryptographic signing secret for session tokens
-const TOKEN_SECRET = process.env.REVENUE_TOKEN_SECRET || 'polaris_kalam_revenue_master_secret_key_2026';
+import {
+  REVENUE_PORTAL_HASH as PORTAL_PASS_HASH,
+  REVENUE_DELETE_HASH as DELETE_PASS_HASH,
+  verifyPassword,
+  createSessionToken,
+  verifySessionToken,
+  isStaffAuthorized,
+  sanitizeInput,
+  checkRateLimit,
+  checkAuthBruteForce,
+  recordAuthFailure,
+  recordAuthSuccess,
+  applySecurityHeaders
+} from './_security.js';
 
 // Fallback in-memory storage for development / isolated serverless runs
 let fallbackRevenue = [];
-
-/**
- * Computes SHA-256 hex digest
- */
-function sha256(str) {
-  if (!str) return '';
-  return crypto.createHash('sha256').update(String(str).trim()).digest('hex');
-}
-
-/**
- * Verifies a submitted password or password hash against target hash in constant time
- */
-function verifyPassword(input, targetHash) {
-  if (!input) return false;
-  const inputStr = String(input).trim();
-  const inputHash = inputStr.length === 64 && /^[0-9a-f]{64}$/i.test(inputStr)
-    ? inputStr.toLowerCase()
-    : sha256(inputStr);
-
-  try {
-    const a = Buffer.from(inputHash, 'hex');
-    const b = Buffer.from(targetHash, 'hex');
-    if (a.length !== b.length) return false;
-    return crypto.timingSafeEqual(a, b);
-  } catch (e) {
-    return inputHash === targetHash;
-  }
-}
-
-/**
- * Generates an HMAC-SHA256 signed session token (valid for 24 hours)
- */
-function createSessionToken() {
-  const payload = {
-    scope: 'revenue_master',
-    iat: Date.now(),
-    exp: Date.now() + 24 * 60 * 60 * 1000 // 24 hours
-  };
-  const jsonPayload = JSON.stringify(payload);
-  const signature = crypto.createHmac('sha256', TOKEN_SECRET).update(jsonPayload).digest('hex');
-  return Buffer.from(JSON.stringify({ p: payload, s: signature })).toString('base64');
-}
-
-/**
- * Validates an HMAC-SHA256 session token
- */
-function verifySessionToken(token) {
-  if (!token) return false;
-  try {
-    const cleanToken = token.startsWith('Bearer ') ? token.slice(7).trim() : token.trim();
-    const decoded = JSON.parse(Buffer.from(cleanToken, 'base64').toString('utf8'));
-    if (!decoded || !decoded.p || !decoded.s) return false;
-
-    // Check expiration
-    if (decoded.p.exp && Date.now() > decoded.p.exp) return false;
-
-    // Verify HMAC signature
-    const expectedSig = crypto.createHmac('sha256', TOKEN_SECRET).update(JSON.stringify(decoded.p)).digest('hex');
-    const a = Buffer.from(decoded.s, 'hex');
-    const b = Buffer.from(expectedSig, 'hex');
-    if (a.length !== b.length) return false;
-    return crypto.timingSafeEqual(a, b);
-  } catch (e) {
-    return false;
-  }
-}
 
 /**
  * Extract and sanitize MongoDB URI
@@ -251,17 +192,35 @@ function diffDaysYMD(startYMD, endYMD) {
 }
 
 export default async function handler(req, res) {
-  // CORS & Strict Real-Time No-Cache Headers
+  // Apply modern security headers
+  applySecurityHeaders(res);
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-revenue-token, x-delete-password');
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-  res.setHeader('Pragma', 'no-cache');
-  res.setHeader('Expires', '0');
-  res.setHeader('Surrogate-Control', 'no-store');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-revenue-token, x-delete-password, x-portal-password, x-cms-source, x-staff-token');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
+  }
+
+  // Rate Limiting (120 requests per minute per IP)
+  const rateCheck = checkRateLimit(req, 'revenue_api', 120, 60000);
+  if (!rateCheck.allowed) {
+    return res.status(429).json({
+      success: false,
+      error: `Too many requests to revenue service. Retry in ${rateCheck.retryAfter} seconds.`
+    });
+  }
+
+  // Parse and sanitize JSON body if present
+  if (req.body) {
+    if (typeof req.body === 'string') {
+      try {
+        req.body = JSON.parse(req.body);
+      } catch (e) {
+        req.body = {};
+      }
+    }
+    req.body = sanitizeInput(req.body);
   }
 
   const { searchParams } = new URL(req.url, 'http://localhost');
@@ -271,6 +230,14 @@ export default async function handler(req, res) {
   // 1. PUBLIC AUTH GATEWAY: POST /api/revenue?action=login
   // =========================================================================
   if (req.method === 'POST' && action === 'login') {
+    const bruteCheck = checkAuthBruteForce(req, 'revenue_login', 5, 15 * 60 * 1000);
+    if (bruteCheck.locked) {
+      return res.status(429).json({
+        success: false,
+        error: `Security lockout: Too many failed master portal login attempts. Access is locked for ${bruteCheck.retryAfter} seconds.`
+      });
+    }
+
     const { password } = req.body || {};
     if (!password) {
       return res.status(400).json({ success: false, error: 'Password is required to enter Master Revenue Look.' });
@@ -278,10 +245,16 @@ export default async function handler(req, res) {
 
     const isValid = verifyPassword(password, PORTAL_PASS_HASH);
     if (!isValid) {
-      return res.status(401).json({ success: false, error: 'Invalid Master Portal Access Password. Access denied.' });
+      recordAuthFailure(req, 'revenue_login', 5, 15 * 60 * 1000);
+      const remaining = bruteCheck.remaining > 0 ? bruteCheck.remaining - 1 : 0;
+      return res.status(401).json({
+        success: false,
+        error: `Invalid Master Portal Access Password. Access denied. (${remaining} attempts remaining before temporary lockout)`
+      });
     }
 
-    const token = createSessionToken();
+    recordAuthSuccess(req, 'revenue_login');
+    const token = createSessionToken('revenue_master', {}, 24);
     return res.status(200).json({
       success: true,
       token,
@@ -294,18 +267,19 @@ export default async function handler(req, res) {
   // 2. SECURITY ENFORCEMENT: VALIDATE PORTAL SESSION TOKEN
   // =========================================================================
   const authHeader = req.headers.authorization || req.headers['x-revenue-token'];
-  const isAuthorized = verifySessionToken(authHeader);
+  const isAuthorized = verifySessionToken(authHeader, 'revenue_master');
 
   // If session token is invalid, also allow passing portal password directly in header or body
   const fallbackAuthPass = req.headers['x-portal-password'] || req.body?.portalPassword;
   const isDirectPasswordValid = fallbackAuthPass && verifyPassword(fallbackAuthPass, PORTAL_PASS_HASH);
 
-  // Allow trusted internal CMS checkouts and sync operations from Front Desk
-  const isInternalCms = req.headers['x-cms-source'] === 'polaris-cms' || req.query?.source === 'polaris-cms' || req.body?.source === 'polaris-cms';
+  // Authenticated internal CMS checkout operations require staff authentication
+  const isStaff = isStaffAuthorized(req);
+  const isInternalCms = req.headers['x-cms-source'] === 'polaris-cms' && isStaff;
 
   if (!isAuthorized && !isDirectPasswordValid) {
     if (req.method === 'POST' && isInternalCms) {
-      // Authorized internal CMS check-out revenue record
+      // Authorized staff internal CMS check-out revenue record
     } else {
       return res.status(401).json({
         success: false,
@@ -322,9 +296,11 @@ export default async function handler(req, res) {
   // Initialize Indexes once per serverless container
   if (revenueCol && !global._revenueDbInitialized) {
     try {
+      revenueCol.createIndex({ id: 1 }, { unique: true }).catch(() => {});
       revenueCol.createIndex({ date: 1 }).catch(() => {});
       revenueCol.createIndex({ createdAt: -1 }).catch(() => {});
       revenueCol.createIndex({ bookingRef: 1 }).catch(() => {});
+      revenueCol.createIndex({ bookingId: 1 }).catch(() => {});
       global._revenueDbInitialized = true;
     } catch (e) {}
   }
@@ -692,13 +668,26 @@ export default async function handler(req, res) {
         });
       }
 
-      const isDeleteAuthorized = verifyPassword(deletePassword, DELETE_PASS_HASH);
-      if (!isDeleteAuthorized) {
-        return res.status(403).json({
+      // Check brute-force defense on deletion password (max 5 failed attempts per 15 mins)
+      const deleteBrute = checkAuthBruteForce(req, 'revenue_delete', 5, 15 * 60 * 1000);
+      if (deleteBrute.locked) {
+        return res.status(429).json({
           success: false,
-          error: 'Invalid Master Deletion Password. Revenue records could not be deleted.'
+          error: `Security lockout: Too many failed master deletion password attempts. Access is locked for ${deleteBrute.retryAfter} seconds.`
         });
       }
+
+      const isDeleteAuthorized = verifyPassword(deletePassword, DELETE_PASS_HASH);
+      if (!isDeleteAuthorized) {
+        recordAuthFailure(req, 'revenue_delete', 5, 15 * 60 * 1000);
+        const remaining = deleteBrute.remaining > 0 ? deleteBrute.remaining - 1 : 0;
+        return res.status(403).json({
+          success: false,
+          error: `Invalid Master Deletion Password. Revenue records could not be deleted. (${remaining} attempts remaining before temporary lockout)`
+        });
+      }
+
+      recordAuthSuccess(req, 'revenue_delete');
 
       // 5A. Reset revenue for specified date range: DELETE /api/revenue?action=reset-range
       if (action === 'reset-range') {
