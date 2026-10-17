@@ -24,6 +24,27 @@ const DEMO_REQUEST_IDS = ['req-101', 'req-102'];
 // Fallback in-memory storage for serverless runtime
 let fallbackBookings = [];
 
+function getPakistanYMD(d = new Date()) {
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Karachi' }).format(d);
+  } catch (e) {
+    const date = new Date(d);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  }
+}
+
+function addDaysYMD(ymdStr, days = 1) {
+  const match = (ymdStr || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return getPakistanYMD();
+  const y = parseInt(match[1], 10);
+  const m = parseInt(match[2], 10) - 1;
+  const day = parseInt(match[3], 10);
+  const utc = new Date(Date.UTC(y, m, day + days));
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${utc.getUTCFullYear()}-${pad(utc.getUTCMonth() + 1)}-${pad(utc.getUTCDate())}`;
+}
+
 export function getMongoConfig() {
   const candidates = [
     { name: 'MONGODB_URI', val: process.env.MONGODB_URI },
@@ -275,8 +296,8 @@ export default async function handler(req, res) {
         floor: body.floor || 'Floor 1',
         preferredFloor: (body.preferredFloor || body.floor || '').trim(),
         pricePKR: Number(body.pricePKR) || 45000,
-        checkIn: body.checkIn || new Date().toISOString().split('T')[0],
-        checkOut: body.checkOut || new Date(Date.now() + 86400000 * 2).toISOString().split('T')[0],
+        checkIn: body.checkIn || getPakistanYMD(),
+        checkOut: body.checkOut || addDaysYMD(body.checkIn || getPakistanYMD(), 2),
         nights: Number(body.nights) || 1,
         guests: body.guests || '2 Guests',
         notes: body.notes ? body.notes.trim() : (body.source ? `Source: ${body.source}` : ''),

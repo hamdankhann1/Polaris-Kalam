@@ -27,6 +27,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { RevenueService, computeSha256 } from '../../services/revenueService';
+import { getTodayYMD, addDaysYMD, formatYMD, diffDaysYMD } from '../../utils/dateUtils';
 
 // Target Cryptographic Hashes for verification
 const PORTAL_PASS_HASH = '8f08510feb936a3ff75c2c16255459150bed23671610c4d0757d83337c980a39';
@@ -35,12 +36,6 @@ const DELETE_PASS_HASH = 'ad4f5e421139b0458296d03ff8925292a4566862d6000789b8aaf1
 function formatPKR(num) {
   if (num === null || num === undefined || isNaN(num)) return 'PKR 0';
   return 'PKR ' + Number(num).toLocaleString('en-PK');
-}
-
-function toYMD(date = new Date()) {
-  const d = new Date(date);
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 export default function RevenueMasterLook({ onReturnHome }) {
@@ -53,12 +48,8 @@ export default function RevenueMasterLook({ onReturnHome }) {
 
   // Date Range Filter
   const [activePreset, setActivePreset] = useState('month'); // 'today', 'yesterday', 'week', 'month', '30days', 'all', 'custom'
-  const [startDate, setStartDate] = useState(() => {
-    const d = new Date();
-    d.setDate(1); // First day of current month
-    return toYMD(d);
-  });
-  const [endDate, setEndDate] = useState(() => toYMD(new Date()));
+  const [startDate, setStartDate] = useState(() => getTodayYMD().substring(0, 8) + '01');
+  const [endDate, setEndDate] = useState(() => getTodayYMD());
 
   // Revenue Data State
   const [revenueData, setRevenueData] = useState({
@@ -97,15 +88,15 @@ export default function RevenueMasterLook({ onReturnHome }) {
 
   // New Record Form State
   const [newRecord, setNewRecord] = useState({
-    date: toYMD(new Date()),
+    date: getTodayYMD(),
     guestName: '',
     phone: '',
     bookingRef: '',
     roomName: '',
     category: 'Executive Suite',
     floor: 'Floor 1',
-    checkIn: toYMD(new Date()),
-    checkOut: toYMD(new Date(Date.now() + 86400000)),
+    checkIn: getTodayYMD(),
+    checkOut: addDaysYMD(getTodayYMD(), 1),
     nights: 1,
     nightlyRate: 45000,
     amount: 45000,
@@ -155,28 +146,25 @@ export default function RevenueMasterLook({ onReturnHome }) {
   // -------------------------------------------------------------------------
   const handleSelectPreset = (preset) => {
     setActivePreset(preset);
-    const today = new Date();
-    const todayStr = toYMD(today);
+    const todayStr = getTodayYMD();
 
     if (preset === 'today') {
       setStartDate(todayStr);
       setEndDate(todayStr);
     } else if (preset === 'yesterday') {
-      const y = new Date(today.getTime() - 86400000);
-      const yStr = toYMD(y);
+      const yStr = addDaysYMD(todayStr, -1);
       setStartDate(yStr);
       setEndDate(yStr);
     } else if (preset === 'week') {
-      const w = new Date(today.getTime() - 6 * 86400000);
-      setStartDate(toYMD(w));
+      const wStr = addDaysYMD(todayStr, -6);
+      setStartDate(wStr);
       setEndDate(todayStr);
     } else if (preset === 'month') {
-      const m = new Date(today.getFullYear(), today.getMonth(), 1);
-      setStartDate(toYMD(m));
+      setStartDate(todayStr.substring(0, 8) + '01');
       setEndDate(todayStr);
     } else if (preset === '30days') {
-      const d30 = new Date(today.getTime() - 29 * 86400000);
-      setStartDate(toYMD(d30));
+      const d30Str = addDaysYMD(todayStr, -29);
+      setStartDate(d30Str);
       setEndDate(todayStr);
     } else if (preset === 'all') {
       setStartDate('');
@@ -240,15 +228,15 @@ export default function RevenueMasterLook({ onReturnHome }) {
       showToast('Booking revenue recorded to MongoDB Atlas', 'success');
       // Reset form
       setNewRecord({
-        date: toYMD(new Date()),
+        date: getTodayYMD(),
         guestName: '',
         phone: '',
         bookingRef: '',
         roomName: '',
         category: 'Executive Suite',
         floor: 'Floor 1',
-        checkIn: toYMD(new Date()),
-        checkOut: toYMD(new Date(Date.now() + 86400000)),
+        checkIn: getTodayYMD(),
+        checkOut: addDaysYMD(getTodayYMD(), 1),
         nights: 1,
         nightlyRate: 45000,
         amount: 45000,
@@ -617,7 +605,7 @@ export default function RevenueMasterLook({ onReturnHome }) {
             </div>
             <div className="mt-2.5 flex items-center justify-between text-xs text-stone-400">
               <span>{summary.dayBookingsCount} bookings today</span>
-              <span className="text-[11px] text-amber-400 font-mono">{toYMD(new Date())}</span>
+              <span className="text-[11px] text-amber-400 font-mono">{getTodayYMD()}</span>
             </div>
             <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/5 rounded-bl-full pointer-events-none group-hover:bg-amber-500/10 transition" />
           </div>
@@ -868,7 +856,7 @@ export default function RevenueMasterLook({ onReturnHome }) {
                     >
                       {/* Date */}
                       <td className="py-3.5 px-4 font-mono text-stone-300 whitespace-nowrap">
-                        {record.date || record.checkIn || toYMD(record.createdAt)}
+                        {record.date || record.checkIn || formatYMD(record.createdAt)}
                       </td>
 
                       {/* Booking Ref */}

@@ -31,6 +31,7 @@ import {
 } from "../../services/roomService";
 import { BookingRequestService } from "../../services/bookingRequestService";
 import PolarisCalendar from "../common/PolarisCalendar";
+import { formatYMD, getTodayYMD, addDaysYMD, diffDaysYMD } from "../../utils/dateUtils";
 
 /**
  * =========================================================================
@@ -262,11 +263,7 @@ export default function BookingPage({
   // Number of nights for the selected stay
   const nightsCount = useMemo(() => {
     if (!checkIn || !checkOut) return 0;
-    const start = new Date(checkIn + "T00:00:00");
-    const end = new Date(checkOut + "T00:00:00");
-    const diffTime = end - start;
-    const days = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return days > 0 ? days : 0;
+    return diffDaysYMD(checkIn, checkOut);
   }, [checkIn, checkOut]);
 
   // Booked dates reactive to chosen floor/suite (or whole category for Best Available)
@@ -294,22 +291,16 @@ export default function BookingPage({
     setIsSuccess(false);
 
     const catBooked = category.bookedDates || [];
-    const today = new Date().toISOString().split("T")[0];
+    const today = getTodayYMD();
 
     // Find next available start date beginning from today
     let startD = today;
-    const cur = new Date(today + "T00:00:00");
     while (catBooked.includes(startD)) {
-      cur.setDate(cur.getDate() + 1);
-      const pad = (n) => String(n).padStart(2, "0");
-      startD = `${cur.getFullYear()}-${pad(cur.getMonth() + 1)}-${pad(cur.getDate())}`;
+      startD = addDaysYMD(startD, 1);
     }
 
     // Default 3 nights if free, or leave checkout open for calendar selection
-    const endD = new Date(cur);
-    endD.setDate(endD.getDate() + 3);
-    const pad = (n) => String(n).padStart(2, "0");
-    let endStr = `${endD.getFullYear()}-${pad(endD.getMonth() + 1)}-${pad(endD.getDate())}`;
+    let endStr = addDaysYMD(startD, 3);
 
     // If any night in between has zero suites available, leave checkout blank so guest picks
     const nights = RoomService.getBookedNightsInRange
@@ -978,85 +969,77 @@ export default function BookingPage({
 
                   {/* Preferred Floor / Level Selection (When Category Spans Multiple Floors) */}
                   {selectedCategory.floors && selectedCategory.floors.length > 1 && (
-                    <div className="pt-1 space-y-2.5">
+                    <div className="pt-2 space-y-2.5">
                       <div className="flex items-center justify-between">
-                        <label className="block text-xs sm:text-sm font-mono uppercase tracking-wider text-stone-800 font-bold flex items-center space-x-1.5">
+                        <label className="block text-xs sm:text-sm font-mono uppercase tracking-wider text-stone-800 font-bold flex items-center space-x-2">
                           <Building2 className="w-4 h-4 text-[#B48A28]" />
-                          <span>Select Floor / Room Preference</span>
+                          <span>Select Floor Preference</span>
                         </label>
                         {selectedCategory.minPrice !== selectedCategory.maxPrice && (
-                          <span className="text-[11px] font-mono text-[#8A661C] font-semibold bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
+                          <span className="text-[11px] font-mono text-[#8A661C] font-medium bg-amber-50/80 border border-amber-200/80 px-2.5 py-0.5 rounded-full">
                             Rates vary by level
                           </span>
                         )}
                       </div>
-                      <p className="text-xs text-stone-600 font-normal">
-                        Choose your preferred room level or let our system allocate the best available suite:
-                      </p>
 
-                      <div className="space-y-2.5 w-full flex flex-col pt-1">
-                        {/* Option 1: Best Available / No Preference */}
+                      <div className="space-y-2 w-full flex flex-col pt-0.5">
+                        {/* Option 1: Best Available / System Allocation */}
                         <button
                           type="button"
                           onClick={() => setSelectedFloorPreference('')}
-                          className={`w-full p-3.5 sm:p-4 rounded-xl text-left border transition-all text-xs font-mono cursor-pointer flex items-center justify-between gap-3 ${
+                          className={`w-full px-5 py-3.5 sm:py-4 rounded-xl border text-left transition-all duration-200 cursor-pointer flex items-center justify-between gap-4 ${
                             !selectedFloorPreference
-                              ? 'bg-stone-900 text-white border-stone-900 font-bold shadow-xs ring-1 ring-stone-900/30'
-                              : 'bg-stone-50/80 hover:bg-stone-100 text-stone-700 border-stone-200'
+                              ? 'bg-stone-900 text-white border-stone-900 shadow-sm ring-1 ring-amber-400/50'
+                              : 'bg-white hover:bg-stone-50 text-stone-800 border-stone-200 shadow-2xs'
                           }`}
                         >
+                          {/* Floor listed on the left */}
                           <div className="flex items-center space-x-3 min-w-0">
-                            {/* Radio Circle */}
-                            <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
-                              !selectedFloorPreference
-                                ? 'border-amber-400 bg-amber-400'
-                                : 'border-stone-300 bg-white'
-                            }`}>
-                              {!selectedFloorPreference && (
-                                <div className="w-1.5 h-1.5 rounded-full bg-stone-900" />
-                              )}
-                            </div>
-
+                            <div className={`w-2 h-2 rounded-full shrink-0 ${
+                              !selectedFloorPreference ? 'bg-amber-400' : 'bg-stone-300'
+                            }`} />
                             <div className="min-w-0">
-                              <div className="flex items-center space-x-2">
-                                <span className="font-semibold text-sm tracking-tight truncate">
-                                  Best Available Suite
-                                </span>
-                                {!selectedFloorPreference && (
-                                  <span className="text-[10px] uppercase font-bold text-amber-400 bg-stone-800 px-2 py-0.5 rounded-full">
-                                    Recommended
-                                  </span>
-                                )}
-                              </div>
-                              <p className={`text-[11px] truncate mt-0.5 ${!selectedFloorPreference ? 'text-stone-300' : 'text-stone-500'}`}>
+                              <span className={`font-display text-sm sm:text-base font-medium tracking-wide block ${
+                                !selectedFloorPreference ? 'text-white' : 'text-stone-900'
+                              }`}>
+                                Best Preference
+                              </span>
+                              <span className={`text-[11px] font-mono block ${
+                                !selectedFloorPreference ? 'text-stone-300' : 'text-stone-500'
+                              }`}>
                                 {!selectedFloorPreference && currentAssignedRoom?.floor
-                                  ? `Allocated on ${currentAssignedRoom.floor} • Best value suite`
-                                  : 'Automated allocation • System allocates best suite'}
-                              </p>
+                                  ? `Allocated on ${currentAssignedRoom.floor}`
+                                  : 'System allocates best available suite'}
+                              </span>
                             </div>
                           </div>
 
-                          {/* Right side: Rate */}
-                          <div className="flex items-baseline space-x-1 shrink-0 font-mono text-right">
-                            <span className="text-[10px] font-bold opacity-80">PKR</span>
-                            <span className={`text-sm sm:text-base font-bold ${!selectedFloorPreference ? 'text-amber-400' : 'text-[#8A661C]'}`}>
+                          {/* Price listed on the far right */}
+                          <div className="flex items-baseline space-x-1.5 shrink-0 font-mono text-right">
+                            <span className={`text-[11px] font-semibold ${!selectedFloorPreference ? 'text-stone-400' : 'text-stone-400'}`}>
+                              PKR
+                            </span>
+                            <span className={`text-base sm:text-lg font-bold ${
+                              !selectedFloorPreference ? 'text-amber-400' : 'text-stone-900'
+                            }`}>
                               {(!selectedFloorPreference
                                 ? currentNightlyPrice
                                 : selectedCategory.minPrice
                               ).toLocaleString()}
                             </span>
-                            <span className="text-[10px] opacity-75">/ night</span>
+                            <span className={`text-xs ${!selectedFloorPreference ? 'text-stone-400' : 'text-stone-500'}`}>
+                              / night
+                            </span>
                           </div>
                         </button>
 
-                        {/* Option 2..N: Specific Floors or Rooms */}
+                        {/* Option 2..N: Specific Floors of rooms available in category */}
                         {floorOrRoomOptions.map((opt) => {
                           const isSelected = selectedFloorPreference === opt.name || selectedFloorPreference === opt.id;
                           const availableCount = availableRoomsForRange.filter(
                             (r) => (r.floor || '').trim().toLowerCase() === opt.name.trim().toLowerCase()
                           ).length;
                           const isSoldOut = Boolean(checkIn && checkOut && availableCount === 0);
-                          const priceDiff = opt.pricePKR - selectedCategory.minPrice;
 
                           return (
                             <button
@@ -1064,75 +1047,50 @@ export default function BookingPage({
                               type="button"
                               disabled={isSoldOut}
                               onClick={() => setSelectedFloorPreference(opt.name)}
-                              className={`w-full p-3.5 sm:p-4 rounded-xl text-left border transition-all text-xs font-mono cursor-pointer flex items-center justify-between gap-3 ${
+                              className={`w-full px-5 py-3.5 sm:py-4 rounded-xl border text-left transition-all duration-200 flex items-center justify-between gap-4 ${
                                 isSelected
-                                  ? 'bg-[#B48A28] text-white border-[#B48A28] font-bold shadow-xs ring-1 ring-[#B48A28]/40'
+                                  ? 'bg-stone-900 text-white border-stone-900 shadow-sm ring-1 ring-amber-400/50 cursor-pointer'
                                   : isSoldOut
-                                  ? 'bg-stone-50 text-stone-400 border-stone-200 opacity-60 cursor-not-allowed'
-                                  : 'bg-stone-50/80 hover:bg-stone-100 text-stone-700 border-stone-200'
+                                  ? 'bg-stone-50/60 text-stone-400 border-stone-200 cursor-not-allowed opacity-60'
+                                  : 'bg-white hover:bg-stone-50 text-stone-800 border-stone-200 shadow-2xs cursor-pointer'
                               }`}
                             >
+                              {/* Floor listed on the left */}
                               <div className="flex items-center space-x-3 min-w-0">
-                                {/* Radio Circle */}
-                                <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
+                                <div className={`w-2 h-2 rounded-full shrink-0 ${
                                   isSelected
-                                    ? 'border-white bg-white'
-                                    : 'border-stone-300 bg-white'
-                                }`}>
-                                  {isSelected && (
-                                    <div className="w-1.5 h-1.5 rounded-full bg-[#B48A28]" />
-                                  )}
-                                </div>
-
-                                <div className="min-w-0">
-                                  <div className="flex items-center space-x-2">
-                                    <span className="font-semibold text-sm tracking-tight truncate">
-                                      {opt.name}
+                                    ? 'bg-amber-400'
+                                    : isSoldOut
+                                    ? 'bg-stone-200'
+                                    : 'bg-stone-300'
+                                }`} />
+                                <div className="flex items-center space-x-2.5 min-w-0">
+                                  <span className={`font-display text-sm sm:text-base font-medium tracking-wide ${
+                                    isSelected ? 'text-white' : isSoldOut ? 'text-stone-400 line-through' : 'text-stone-900'
+                                  }`}>
+                                    {opt.name}
+                                  </span>
+                                  {isSoldOut && (
+                                    <span className="text-[10px] font-mono uppercase tracking-wider text-rose-600 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+                                      Unavailable
                                     </span>
-                                    {isSelected ? (
-                                      <span className="text-[10px] uppercase font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded-full">
-                                        Selected
-                                      </span>
-                                    ) : isSoldOut ? (
-                                      <span className="text-[10px] uppercase font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
-                                        Sold Out
-                                      </span>
-                                    ) : null}
-                                  </div>
-
-                                  <p className={`text-[11px] truncate mt-0.5 ${isSelected ? 'text-amber-100' : 'text-stone-500'}`}>
-                                    {checkIn && checkOut
-                                      ? isSoldOut
-                                        ? 'Occupied for selected stay'
-                                        : 'Available for selected stay'
-                                      : 'Available on this level'}
-                                  </p>
+                                  )}
                                 </div>
                               </div>
 
-                              {/* Right side: Price diff pill + Rate */}
-                              <div className="flex items-center space-x-2.5 shrink-0 text-right">
-                                {priceDiff > 0 ? (
-                                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                    isSelected ? 'bg-amber-900/40 text-amber-100' : 'bg-amber-100 text-amber-900'
-                                  }`}>
-                                    +PKR {priceDiff.toLocaleString()}
-                                  </span>
-                                ) : priceDiff === 0 && selectedCategory.minPrice !== selectedCategory.maxPrice ? (
-                                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                    isSelected ? 'bg-emerald-900/40 text-emerald-100' : 'bg-emerald-100 text-emerald-800'
-                                  }`}>
-                                    Best Value
-                                  </span>
-                                ) : null}
-
-                                <div className="flex items-baseline space-x-1 font-mono">
-                                  <span className="text-[10px] font-bold opacity-80">PKR</span>
-                                  <span className={`text-sm sm:text-base font-bold ${isSelected ? 'text-white' : 'text-[#8A661C]'}`}>
-                                    {opt.pricePKR.toLocaleString()}
-                                  </span>
-                                  <span className="text-[10px] opacity-75">/ night</span>
-                                </div>
+                              {/* Price listed on the far right */}
+                              <div className="flex items-baseline space-x-1.5 shrink-0 font-mono text-right">
+                                <span className={`text-[11px] font-semibold ${isSelected ? 'text-stone-400' : 'text-stone-400'}`}>
+                                  PKR
+                                </span>
+                                <span className={`text-base sm:text-lg font-bold ${
+                                  isSelected ? 'text-amber-400' : isSoldOut ? 'text-stone-400' : 'text-stone-900'
+                                }`}>
+                                  {opt.pricePKR.toLocaleString()}
+                                </span>
+                                <span className={`text-xs ${isSelected ? 'text-stone-400' : 'text-stone-500'}`}>
+                                  / night
+                                </span>
                               </div>
                             </button>
                           );

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { LogOut, X, Sparkles, CheckCircle2, Bed, Calendar, DollarSign, User, Phone, ShieldCheck, Clock } from 'lucide-react';
+import { getTodayYMD, diffDaysYMD } from '../../utils/dateUtils';
 
 export default function CheckOutModal({
   isOpen,
@@ -10,7 +11,7 @@ export default function CheckOutModal({
 }) {
   if (!isOpen || (!booking && !room)) return null;
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getTodayYMD();
   const initialCheckIn = booking?.actualCheckIn || booking?.checkIn || room?.activeBooking?.actualCheckIn || room?.activeBooking?.checkIn || todayStr;
   const initialCheckOut = booking?.actualCheckOut || booking?.checkOut || room?.activeBooking?.actualCheckOut || room?.activeBooking?.checkOut || todayStr;
   const baseRate = Number(booking?.pricePKR || room?.pricePKR || 45000);
@@ -43,7 +44,7 @@ export default function CheckOutModal({
   const phone = booking?.phone || '';
 
   // Calculate dynamic nights and total
-  const nights = Math.max(1, Math.ceil(Math.abs(new Date(checkOutDate) - new Date(checkInDate)) / 86400000)) || 1;
+  const nights = diffDaysYMD(checkInDate, checkOutDate);
   const roomCharge = nightlyRate * nights;
   const totalAmount = Math.max(0, roomCharge + Number(extraCharges || 0) - Number(discount || 0));
 
@@ -90,7 +91,7 @@ export default function CheckOutModal({
             </div>
             <div>
               <span className="text-[10.5px] font-mono uppercase tracking-widest text-[#B48A28] font-bold">
-                FRONT DESK GUEST DEPARTURE & REVENUE SYNC
+                FRONT DESK GUEST DEPARTURE
               </span>
               <h3 className="font-display text-xl text-stone-900 font-medium">
                 Guest Check-Out
@@ -229,7 +230,7 @@ export default function CheckOutModal({
               </div>
             )}
             <div className="pt-2 border-t border-stone-700 flex items-center justify-between">
-              <span className="text-[11px] uppercase tracking-wider text-stone-400 font-bold">Total Revenue (Syncs to Master Look)</span>
+              <span className="text-[11px] uppercase tracking-wider text-stone-400 font-bold">Total Billing Amount</span>
               <span className="text-base font-bold text-[#B48A28]">PKR {totalAmount.toLocaleString()}</span>
             </div>
           </div>
@@ -302,7 +303,7 @@ export default function CheckOutModal({
               className="px-5 py-2.5 rounded-lg text-xs font-mono uppercase tracking-wider bg-emerald-700 hover:bg-emerald-600 text-white font-bold transition-all flex items-center space-x-2 shadow-md shadow-emerald-900/10 disabled:opacity-50"
             >
               <LogOut className="w-4 h-4" />
-              <span>{isSubmitting ? 'Syncing Revenue & Checking Out...' : 'Complete Check-Out & Sync Revenue'}</span>
+              <span>{isSubmitting ? 'Processing Check-Out...' : 'Complete Check-Out'}</span>
             </button>
           </div>
         </form>

@@ -206,18 +206,48 @@ async function getDatabase() {
 }
 
 /**
- * Date helper: Format Date object to YYYY-MM-DD
+ * Date helpers grounded in Pakistan Standard Time (Asia/Karachi UTC+5)
  */
+function getPakistanYMD(d = new Date()) {
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Karachi' }).format(d);
+  } catch (e) {
+    const date = new Date(d);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  }
+}
+
 function toYMD(d) {
-  if (!d) return new Date().toISOString().split('T')[0];
+  if (!d) return getPakistanYMD();
   if (typeof d === 'string') {
     const match = d.match(/^(\d{4}-\d{2}-\d{2})/);
     if (match) return match[1];
   }
   const date = new Date(d);
-  if (isNaN(date.getTime())) return new Date().toISOString().split('T')[0];
+  if (isNaN(date.getTime())) return getPakistanYMD();
+  return getPakistanYMD(date);
+}
+
+function addDaysYMD(ymdStr, days = 1) {
+  const match = (ymdStr || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return getPakistanYMD();
+  const y = parseInt(match[1], 10);
+  const m = parseInt(match[2], 10) - 1;
+  const day = parseInt(match[3], 10);
+  const utc = new Date(Date.UTC(y, m, day + days));
   const pad = (n) => String(n).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  return `${utc.getUTCFullYear()}-${pad(utc.getUTCMonth() + 1)}-${pad(utc.getUTCDate())}`;
+}
+
+function diffDaysYMD(startYMD, endYMD) {
+  if (!startYMD || !endYMD) return 1;
+  const m1 = String(startYMD).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  const m2 = String(endYMD).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m1 || !m2) return 1;
+  const t1 = Date.UTC(parseInt(m1[1], 10), parseInt(m1[2], 10) - 1, parseInt(m1[3], 10));
+  const t2 = Date.UTC(parseInt(m2[1], 10), parseInt(m2[2], 10) - 1, parseInt(m2[3], 10));
+  return Math.max(1, Math.round((t2 - t1) / 86400000));
 }
 
 export default async function handler(req, res) {
@@ -352,23 +382,19 @@ export default async function handler(req, res) {
         allRecords = [...fallbackRevenue];
       }
 
-      // Compute Global Timeframes (supporting both Pakistan local date and UTC date)
-      const now = new Date();
-      const pad = (n) => String(n).padStart(2, '0');
-      const todayLocal = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-      const todayIso = now.toISOString().split('T')[0];
-      const todayYMD = todayLocal;
+      // Compute Global Timeframes grounded in Pakistan Standard Time (Asia/Karachi UTC+5)
+      const todayPakistan = getPakistanYMD();
+      const todayIso = new Date().toISOString().split('T')[0];
+      const todayYMD = todayPakistan;
 
       // Current 7-day range (last 7 days including today)
-      const sevenDaysAgo = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000);
-      const sevenDaysAgoYMD = `${sevenDaysAgo.getFullYear()}-${pad(sevenDaysAgo.getMonth() + 1)}-${pad(sevenDaysAgo.getDate())}`;
+      const sevenDaysAgoYMD = addDaysYMD(todayPakistan, -6);
 
       // Current calendar month prefix (e.g. 2026-10)
-      const currentMonthPrefix = todayYMD.substring(0, 7);
+      const currentMonthPrefix = todayPakistan.substring(0, 7);
 
       // Past 30 days
-      const thirtyDaysAgo = new Date(now.getTime() - 29 * 24 * 60 * 60 * 1000);
-      const thirtyDaysAgoYMD = `${thirtyDaysAgo.getFullYear()}-${pad(thirtyDaysAgo.getMonth() + 1)}-${pad(thirtyDaysAgo.getDate())}`;
+      const thirtyDaysAgoYMD = addDaysYMD(todayPakistan, -29);
 
       // Calculate Metrics across all records
       let dayRevenue = 0;
@@ -384,17 +410,17 @@ export default async function handler(req, res) {
         const amt = Number(r.amount) || 0;
         const d = (r.date || r.createdAt || '').substring(0, 10);
 
-        if (d === todayLocal || d === todayIso) {
+        if (d === todayPakistan || d === todayIso) {
           dayRevenue += amt;
           dayBookingsCount += 1;
         }
 
-        if (d >= sevenDaysAgoYMD && d <= todayYMD) {
+        if (d >= sevenDaysAgoYMD && d <= todayPakistan) {
           weeklyRevenue += amt;
           weeklyBookingsCount += 1;
         }
 
-        if (d.startsWith(currentMonthPrefix) || (d >= thirtyDaysAgoYMD && d <= todayYMD)) {
+        if (d.startsWith(currentMonthPrefix) || (d >= thirtyDaysAgoYMD && d <= todayPakistan)) {
           monthlyRevenue += amt;
           monthlyBookingsCount += 1;
         }
@@ -559,9 +585,7 @@ export default async function handler(req, res) {
                 });
 
                 if (!exists && range.checkIn && range.checkOut) {
-                  const start = new Date(range.checkIn);
-                  const end = new Date(range.checkOut);
-                  const nights = Math.max(1, Math.ceil(Math.abs(end - start) / 86400000)) || 1;
+                  const nights = diffDaysYMD(range.checkIn, range.checkOut);
                   const totalAmount = (Number(room.pricePKR) || 45000) * nights;
                   const revenueDate = range.checkIn.substring(0, 10);
 

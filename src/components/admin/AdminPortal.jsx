@@ -38,6 +38,7 @@ import { CategoryService } from '../../services/categoryService';
 import { FloorService } from '../../services/floorService';
 import { BookingRequestService } from '../../services/bookingRequestService';
 import { POLARIS_CONFIG } from '../../polarisConfig';
+import { formatYMD, getTodayYMD, diffDaysYMD } from '../../utils/dateUtils';
 import StatusChangeModal from './StatusChangeModal';
 import NewBookingModal from './NewBookingModal';
 import RoomDetailsModal from './RoomDetailsModal';
@@ -660,13 +661,13 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
     departureNotes
   }) => {
     try {
-      const revDate = checkOut || new Date().toISOString().split('T')[0];
+      const revDate = checkOut || formatYMD(new Date());
       const startStayDate = checkIn || booking?.checkIn || revDate;
       const stayNights = Number(nights) || 1;
       const rate = Number(nightlyRate) || room?.pricePKR || 45000;
       const finalRevenue = Number(totalAmount) || (stayNights * rate);
 
-      // 1. Synchronize checkout revenue to MongoDB Atlas revenue ledger (Master Look)
+      // 1. Synchronize checkout revenue to MongoDB Atlas revenue ledger
       try {
         await fetch('/api/revenue', {
           method: 'POST',
@@ -738,7 +739,7 @@ export default function AdminPortal({ onReturnToWebsite, onOpenBooking, onLogout
       setRooms(freshRooms);
       setBookingRequests(freshRequests);
 
-      triggerToast(`✓ Guest ${booking?.guestName || 'Guest'} checked out of Room #${room?.roomNumber || booking?.roomNumber}. Revenue PKR ${finalRevenue.toLocaleString()} synced to Master Look.`);
+      triggerToast(`✓ Guest ${booking?.guestName || 'Guest'} checked out of Room #${room?.roomNumber || booking?.roomNumber}. Check-out successfully completed.`);
     } catch (err) {
       console.error('Error completing checkout:', err);
       triggerToast('Error during check-out: ' + err.message);

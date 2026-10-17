@@ -94,7 +94,7 @@ export default function StaffLoginModal({ isOpen, onLoginSuccess, onCancel }) {
         <form onSubmit={handleVerify} className="mt-6 space-y-4">
           <div>
             <label className="block text-xs sm:text-sm font-mono uppercase tracking-wider text-stone-800 mb-1.5 text-center font-bold">
-              Master Admin Password
+              Staff Administrator Password
             </label>
             <div className="relative">
               <Key className="absolute left-3.5 top-3.5 w-4 h-4 text-stone-400" />

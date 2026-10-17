@@ -17,6 +17,8 @@
  * 4. Update Room Nightly Prices & Specifications
  */
 
+import { formatYMD, getTodayYMD, addDaysYMD, diffDaysYMD } from '../utils/dateUtils';
+
 // Predefined architectural categories removed — categories are now 100% user-defined
 export const FLOOR_CATEGORIES = [];
 
@@ -38,31 +40,20 @@ export function getDistinctCategories(rooms = []) {
  */
 export function getBookedNightsInRange(checkIn, checkOut) {
   if (!checkIn) return [];
-  const dates = [];
-  const current = new Date(checkIn + 'T00:00:00');
-  const end = checkOut ? new Date(checkOut + 'T00:00:00') : new Date(checkIn + 'T00:00:00');
-  
-  if (current.getTime() === end.getTime()) {
-    const pad = (n) => String(n).padStart(2, '0');
-    return [`${current.getFullYear()}-${pad(current.getMonth() + 1)}-${pad(current.getDate())}`];
-  }
+  const start = formatYMD(checkIn);
+  const end = checkOut ? formatYMD(checkOut) : start;
+  if (start >= end) return [start];
 
-  while (current < end) {
-    const pad = (n) => String(n).padStart(2, '0');
-    dates.push(`${current.getFullYear()}-${pad(current.getMonth() + 1)}-${pad(current.getDate())}`);
-    current.setDate(current.getDate() + 1);
+  const dates = [];
+  let cur = start;
+  while (cur < end) {
+    dates.push(cur);
+    cur = addDaysYMD(cur, 1);
   }
   return dates;
 }
 
-/**
- * Helper: Format a Date object to YYYY-MM-DD using local time
- */
-export function formatYMD(date = new Date()) {
-  const d = new Date(date);
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
+export { formatYMD };
 
 /**
  * Compute dates where ALL rooms in a category are booked.
@@ -913,7 +904,7 @@ export const RoomService = {
     const idx = ranges.findIndex((b) => b.id === rangeId);
     let targetRange = idx !== -1 ? ranges[idx] : ranges[0];
 
-    const actualCheckIn = checkInData.actualCheckIn || checkInData.checkIn || new Date().toISOString().split('T')[0];
+    const actualCheckIn = checkInData.actualCheckIn || checkInData.checkIn || getTodayYMD();
     const expectedCheckOut = checkInData.expectedCheckOut || checkInData.checkOut || targetRange?.checkOut || actualCheckIn;
     const nowIso = new Date().toISOString();
 

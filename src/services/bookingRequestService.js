@@ -16,6 +16,8 @@
  */
 
 // Zero placeholder bookings - production database starts completely clean
+import { formatYMD, getTodayYMD, addDaysYMD, diffDaysYMD } from '../utils/dateUtils';
+
 const INITIAL_REQUESTS = [];
 
 const DEMO_REQUEST_IDS = new Set(['req-101', 'req-102']);
@@ -195,10 +197,9 @@ export const BookingRequestService = {
    * Create a new booking request -> persists to database
    */
   async createRequest(data) {
-    const start = new Date(data.checkIn || Date.now());
-    const end = new Date(data.checkOut || Date.now() + 86400000);
-    const diffTime = Math.abs(end - start);
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) || 1;
+    const startYMD = formatYMD(data.checkIn);
+    const endYMD = data.checkOut ? formatYMD(data.checkOut) : addDaysYMD(startYMD, 2);
+    const diffDays = diffDaysYMD(startYMD, endYMD);
 
     const newRequest = {
       id: 'req-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
@@ -212,8 +213,8 @@ export const BookingRequestService = {
       floor: data.floor || 'Floor 1',
       preferredFloor: (data.preferredFloor || data.floor || '').trim(),
       pricePKR: Number(data.pricePKR) || 45000,
-      checkIn: data.checkIn || new Date().toISOString().split('T')[0],
-      checkOut: data.checkOut || new Date(Date.now() + 86400000 * 2).toISOString().split('T')[0],
+      checkIn: startYMD,
+      checkOut: endYMD,
       nights: diffDays,
       guests: data.guests || '2 Guests',
       notes: data.notes ? data.notes.trim() : (data.source ? `Source: ${data.source}` : ''),

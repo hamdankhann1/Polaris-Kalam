@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { LogIn, X, Calendar, User, Phone, CheckCircle2, Bed, Clock } from 'lucide-react';
+import { getTodayYMD, diffDaysYMD } from '../../utils/dateUtils';
 
 export default function CheckInModal({
   isOpen,
@@ -10,7 +11,7 @@ export default function CheckInModal({
 }) {
   if (!isOpen || (!booking && !room)) return null;
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getTodayYMD();
   const initialCheckIn = booking?.actualCheckIn || booking?.checkIn || room?.activeBooking?.checkIn || todayStr;
   const initialCheckOut = booking?.actualCheckOut || booking?.checkOut || room?.activeBooking?.checkOut || todayStr;
 
@@ -34,7 +35,7 @@ export default function CheckInModal({
   const phone = booking?.phone || '';
 
   // Calculate nights
-  const nights = Math.max(1, Math.ceil(Math.abs(new Date(expectedCheckOut) - new Date(actualCheckIn)) / 86400000)) || 1;
+  const nights = diffDaysYMD(actualCheckIn, expectedCheckOut);
   const pricePKR = booking?.pricePKR || room?.pricePKR || 45000;
   const estAmount = pricePKR * nights;
 
@@ -158,7 +159,7 @@ export default function CheckInModal({
               <span className="font-bold text-sm">{nights} {nights === 1 ? 'Night' : 'Nights'}</span>
             </div>
             <div className="text-right">
-              <span className="text-emerald-700 font-semibold block">Est. Revenue</span>
+              <span className="text-emerald-700 font-semibold block">Est. Total Billing</span>
               <span className="font-bold text-sm text-[#B48A28]">PKR {estAmount.toLocaleString()}</span>
             </div>
           </div>

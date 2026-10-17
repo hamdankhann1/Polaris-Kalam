@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { X, Calendar, User, ShieldAlert, ArrowRight, Bed, Phone, Mail, MessageSquare } from 'lucide-react';
 import { RoomService } from '../../services/roomService';
 import PolarisCalendar from '../common/PolarisCalendar';
+import { getTodayYMD, addDaysYMD } from '../../utils/dateUtils';
 
 /**
  * =========================================================================
@@ -14,9 +15,8 @@ import PolarisCalendar from '../common/PolarisCalendar';
 export default function NewBookingModal({ isOpen, onClose, rooms, onSaveBooking, bookingRequests = [], initialRoomId = null }) {
   if (!isOpen) return null;
 
-  const today = new Date().toISOString().split('T')[0];
-  const defaultStart = today;
-  const defaultEnd = new Date(new Date(defaultStart + 'T00:00:00').getTime() + 86400000 * 3).toISOString().split('T')[0];
+  const defaultStart = getTodayYMD();
+  const defaultEnd = addDaysYMD(defaultStart, 3);
 
   const [selectedRoomId, setSelectedRoomId] = useState(initialRoomId || rooms[0]?.id || '');
   const [guestName, setGuestName] = useState('');

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, CheckCircle2, AlertTriangle, Sparkles, Calendar, User, ShieldCheck, Tag, ArrowRight } from 'lucide-react';
+import { getTodayYMD, addDaysYMD } from '../../utils/dateUtils';
 
 /**
  * =========================================================================
@@ -15,9 +16,9 @@ export default function StatusChangeModal({ isOpen, onClose, room, targetStatus,
   if (!isOpen || !room || !targetStatus) return null;
 
   // Form states for 'booked'
-  const today = new Date().toISOString().split('T')[0];
-  const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
-  const threeDaysLater = new Date(Date.now() + 86400000 * 3).toISOString().split('T')[0];
+  const today = getTodayYMD();
+  const tomorrow = addDaysYMD(today, 1);
+  const threeDaysLater = addDaysYMD(today, 3);
 
   const [guestName, setGuestName] = useState(room.activeBooking?.guestName || '');
   const [checkIn, setCheckIn] = useState(room.activeBooking?.checkIn || today);
