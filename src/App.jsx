@@ -9,6 +9,8 @@ import AdminPortal from './components/admin/AdminPortal';
 import StaffLoginModal from './components/admin/StaffLoginModal';
 import BookingPage from './components/booking/BookingPage';
 import RevenueMasterLook from './components/revenue/RevenueMasterLook';
+import FloorExplorationSection from './components/experience/FloorExplorationSection';
+import SanctuaryAEOSection from './components/seo/SanctuaryAEOSection';
 
 /**
  * =========================================================================
@@ -134,8 +136,11 @@ export default function App() {
     };
   }, []);
 
+  const [initialBookingCategory, setInitialBookingCategory] = useState(null);
+
   // Handlers for Views
-  const handleOpenBooking = () => {
+  const handleOpenBooking = (categoryName = null) => {
+    setInitialBookingCategory(typeof categoryName === 'string' ? categoryName : null);
     setCurrentView('booking');
     if (typeof window !== 'undefined') {
       try {
@@ -243,6 +248,7 @@ export default function App() {
       <BookingPage
         onReturnHome={handleExitAndLogout} // Option C: Auto-logout on return to sanctuary/website
         isAdmin={isStaffAuthenticated}      // Option A: Staff preview banner with 1-click return
+        initialCategory={initialBookingCategory}
         onReturnToAdmin={() => {
           setCurrentView('admin');
           if (typeof window !== 'undefined') {
@@ -273,9 +279,9 @@ export default function App() {
   // VIEW 3: MAIN LANDING WEBSITE (Default)
   // =========================================================================
   return (
-    <div className="relative min-h-screen w-full max-w-full overflow-x-hidden text-stone-800 selection:bg-amber-200 selection:text-stone-900">
+    <div className="relative min-h-screen w-full max-w-full overflow-x-clip text-stone-800 selection:bg-amber-200 selection:text-stone-900 flex flex-col">
       
-      {/* Visual Backdrop */}
+      {/* Visual Backdrop Layer */}
       <BackgroundLayer />
 
       {/* Top Architectural Navigation Bar */}
@@ -285,8 +291,8 @@ export default function App() {
       />
 
       {/* Main Content Area */}
-      <main className="relative z-10 w-full max-w-full overflow-x-hidden">
-        {/* Hero Section: Brand, "BOOKING WILL BE OPEN SOON", Countdown & Waitlist */}
+      <main className="relative z-10 w-full max-w-full overflow-x-clip flex-1">
+        {/* Hero Section: Cinematic 3D Parallax Architectural Experience */}
         <Hero 
           onOpenInquiry={() => setIsInquiryModalOpen(true)}
           onOpenBooking={handleOpenBooking}
@@ -294,6 +300,18 @@ export default function App() {
 
         {/* Vision Section: Concept Pillars & Hotel Standards in Kalam Valley */}
         <VisionSection onOpenInquiry={() => setIsInquiryModalOpen(true)} />
+
+        {/* Dynamic Live Floor Inventory Architecture (100% Backend Connected) */}
+        <FloorExplorationSection 
+          onOpenBooking={handleOpenBooking}
+          onOpenInquiry={() => setIsInquiryModalOpen(true)}
+        />
+
+        {/* AEO & GEO Knowledge Base (Answer Engine & Generative Engine Optimization) */}
+        <SanctuaryAEOSection 
+          onOpenBooking={handleOpenBooking}
+          onOpenInquiry={() => setIsInquiryModalOpen(true)}
+        />
       </main>
 
       {/* Footer Section */}

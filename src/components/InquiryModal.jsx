@@ -10,13 +10,7 @@ import { BookingRequestService } from '../services/bookingRequestService';
  * =========================================================================
  * 
  * Interactive inquiry form modal allowing potential guests, corporate partners,
- * travel connoisseurs, and press to connect prior to the official launch.
- * 
- * Features:
- * - Clean glassmorphism overlay
- * - Escape key / Backdrop click dismiss
- * - Form validation with feedback message
- * - Dispatches via EmailJS with custom inquiry email response
+ * travel connoisseurs, and press to connect prior to official opening.
  */
 export default function InquiryModal({ isOpen, onClose }) {
   const [formData, setFormData] = useState({
@@ -30,7 +24,6 @@ export default function InquiryModal({ isOpen, onClose }) {
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
 
-  // Close modal when pressing Escape key
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') onClose();
@@ -53,7 +46,6 @@ export default function InquiryModal({ isOpen, onClose }) {
 
     setIsLoading(true);
 
-    // Dispatches via EmailJS (only routes to Brevo if user explicitly selected VIP list option)
     await submitPrivateInquiry({
       email: formData.email,
       name: formData.name,
@@ -62,7 +54,6 @@ export default function InquiryModal({ isOpen, onClose }) {
       message: formData.message,
     });
 
-    // Also mirror to CMS booking inquiries queue so the notification badge increments in the CMS
     try {
       await BookingRequestService.createRequest({
         guestName: formData.name,
@@ -97,121 +88,119 @@ export default function InquiryModal({ isOpen, onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-stone-900/60 backdrop-blur-md animate-fadeIn w-full max-w-full overflow-x-hidden">
-      {/* Background click listener */}
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/60 backdrop-blur-sm animate-fadeIn w-full overflow-x-hidden">
       <div className="absolute inset-0" onClick={onClose} />
 
-      {/* Modal Container */}
-      <div className="relative w-full max-w-xl glass-panel border border-stone-200 rounded-2xl p-4 sm:p-8 md:p-10 shadow-2xl z-10 bg-white/95 text-stone-900 max-h-[92vh] overflow-y-auto">
+      <div className="relative w-full max-w-xl glass-panel border border-stone-200 rounded-2xl p-5 sm:p-8 md:p-10 shadow-2xl z-10 bg-white/95 text-stone-900 max-h-[92vh] overflow-y-auto">
         
-        {/* Close Button */}
+        {/* 44px Accessible Close Button */}
         <button
           onClick={onClose}
-          className="absolute top-5 right-5 sm:top-6 sm:right-6 p-2 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors"
+          className="absolute top-4 right-4 sm:top-5 sm:right-5 w-10 h-10 rounded-xl text-stone-400 hover:text-stone-700 hover:bg-stone-100 flex items-center justify-center transition-colors touch-manipulation"
           aria-label="Close modal"
         >
           <X className="w-5 h-5" />
         </button>
 
         {/* Modal Header */}
-        <div className="mb-6 sm:mb-8 pr-8">
-          <div className="flex items-center space-x-2 text-[#8A661C] text-xs sm:text-sm font-mono tracking-wider uppercase mb-2 font-bold">
+        <div className="mb-6 pr-8">
+          <div className="flex items-center space-x-2 text-[#8A661C] text-xs font-mono tracking-wider uppercase mb-1.5 font-bold">
             <img
               src={POLARIS_CONFIG.emblem}
               alt="Polaris Emblem"
-              className="w-4 h-4 object-contain filter drop-shadow-[0_1px_3px_rgba(180,138,40,0.3)]"
+              className="w-4 h-4 object-contain"
             />
             <span>Exclusive Access</span>
           </div>
-          <h3 className="font-display text-2xl sm:text-3xl text-stone-900 font-medium">
+          <h3 className="font-serif text-2xl sm:text-3xl text-stone-900 font-normal">
             Private Inquiries & Previews
           </h3>
-          <p className="text-stone-700 text-sm sm:text-base mt-2 font-normal leading-relaxed">
-            Connect with our hospitality concierge for corporate retreats, media partnerships, or private inquiries at Polaris Kalam.
+          <p className="text-stone-600 text-xs sm:text-sm mt-1.5 font-normal leading-relaxed">
+            Connect with our hospitality concierge for bespoke reservations, corporate retreats, and private allocations.
           </p>
         </div>
 
         {/* Form Body */}
         {isSuccess ? (
-          <div className="py-12 flex flex-col items-center text-center">
-            <CheckCircle className="w-14 h-14 text-[#B48A28] mb-4 animate-bounce" />
-            <h4 className="text-xl font-display text-stone-900 mb-2 font-medium">Inquiry Received</h4>
-            <p className="text-sm sm:text-base text-stone-700 max-w-sm font-normal">
-              Our hospitality concierge team will contact you with priority allocations before public opening.
+          <div className="py-10 flex flex-col items-center text-center space-y-3">
+            <CheckCircle className="w-12 h-12 text-[#8A661C] animate-bounce" />
+            <h4 className="text-xl font-serif text-stone-900 font-normal">Inquiry Received</h4>
+            <p className="text-xs sm:text-sm text-stone-600 max-w-sm font-normal">
+              Our hospitality concierge team will contact you directly with priority allocations.
             </p>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5">
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs sm:text-sm tracking-wider uppercase text-stone-800 mb-1.5 font-mono font-semibold">
+              <label className="block text-xs font-mono uppercase tracking-wider text-stone-800 mb-1.5 font-bold">
                 Full Name *
               </label>
-              <div className="relative">
+              <div className="relative flex items-center">
+                <User className="w-4 h-4 text-[#8A661C] absolute left-3.5 pointer-events-none shrink-0" />
                 <input
                   type="text"
                   required
                   placeholder="Your full name"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full pl-11 pr-4 py-3 bg-stone-50 border border-stone-300 rounded-lg text-stone-900 placeholder-stone-500 text-sm sm:text-base focus:outline-none focus:border-amber-600 focus:bg-white focus:ring-1 focus:ring-amber-500 transition-colors"
+                  className="w-full pl-11 pr-4 py-3 bg-stone-50 border border-stone-300 rounded-xl text-stone-900 placeholder-stone-400 text-sm focus:outline-none focus:border-[#8A661C] focus:bg-white focus:ring-1 focus:ring-[#8A661C] transition-colors"
                 />
-                <User className="w-4 h-4 text-stone-500 absolute left-3.5 top-3.5" />
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
               <div>
-                <label className="block text-xs sm:text-sm tracking-wider uppercase text-stone-800 mb-1.5 font-mono font-semibold">
+                <label className="block text-xs font-mono uppercase tracking-wider text-stone-800 mb-1.5 font-bold">
                   Email Address *
                 </label>
-                <div className="relative">
+                <div className="relative flex items-center">
+                  <Mail className="w-4 h-4 text-[#8A661C] absolute left-3.5 pointer-events-none shrink-0" />
                   <input
                     type="email"
                     required
                     placeholder="name@example.com"
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    className="w-full pl-11 pr-4 py-3 bg-stone-50 border border-stone-300 rounded-lg text-stone-900 placeholder-stone-500 text-sm sm:text-base focus:outline-none focus:border-amber-600 focus:bg-white focus:ring-1 focus:ring-amber-500 transition-colors"
+                    className="w-full pl-11 pr-4 py-3 bg-stone-50 border border-stone-300 rounded-xl text-stone-900 placeholder-stone-400 text-sm focus:outline-none focus:border-[#8A661C] focus:bg-white focus:ring-1 focus:ring-[#8A661C] transition-colors"
                   />
-                  <Mail className="w-4 h-4 text-stone-500 absolute left-3.5 top-3.5" />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs sm:text-sm tracking-wider uppercase text-stone-800 mb-1.5 font-mono font-semibold">
-                  Phone / WhatsApp
+                <label className="block text-xs font-mono uppercase tracking-wider text-stone-800 mb-1.5 font-bold">
+                  WhatsApp / Phone
                 </label>
-                <div className="relative">
+                <div className="relative flex items-center">
+                  <Phone className="w-4 h-4 text-[#8A661C] absolute left-3.5 pointer-events-none shrink-0" />
                   <input
                     type="tel"
                     placeholder="+92 300 0000000"
                     value={formData.phone}
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    className="w-full pl-11 pr-4 py-3 bg-stone-50 border border-stone-300 rounded-lg text-stone-900 placeholder-stone-500 text-sm sm:text-base focus:outline-none focus:border-amber-600 focus:bg-white focus:ring-1 focus:ring-amber-500 transition-colors font-mono"
+                    className="w-full pl-11 pr-4 py-3 bg-stone-50 border border-stone-300 rounded-xl text-stone-900 placeholder-stone-400 text-sm focus:outline-none focus:border-[#8A661C] focus:bg-white focus:ring-1 focus:ring-[#8A661C] transition-colors font-mono"
                   />
-                  <Phone className="w-4 h-4 text-stone-500 absolute left-3.5 top-3.5" />
                 </div>
               </div>
             </div>
 
             <div>
-              <label className="block text-xs sm:text-sm tracking-wider uppercase text-stone-800 mb-1.5 font-mono font-semibold">
+              <label className="block text-xs font-mono uppercase tracking-wider text-stone-800 mb-1.5 font-bold">
                 Primary Interest
               </label>
               <select
                 value={formData.interest}
                 onChange={(e) => setFormData({ ...formData, interest: e.target.value })}
-                className="w-full px-4 py-3 bg-stone-50 border border-stone-300 rounded-lg text-stone-900 text-sm sm:text-base focus:outline-none focus:border-amber-600 focus:bg-white focus:ring-1 focus:ring-amber-500 transition-colors cursor-pointer"
+                className="w-full px-4 py-3 bg-stone-50 border border-stone-300 rounded-xl text-stone-900 text-sm focus:outline-none focus:border-[#8A661C] focus:bg-white focus:ring-1 focus:ring-[#8A661C] transition-colors cursor-pointer"
               >
-                <option value="December 1st Soft Launch VIP List" className="bg-white text-stone-900">December 1st Soft Launch VIP List</option>
-                <option value="Tourism & Press Partnership" className="bg-white text-stone-900">Tourism & Press Partnership</option>
-                <option value="Corporate Retreat / Private Buyout" className="bg-white text-stone-900">Corporate Retreat / Private Buyout</option>
-                <option value="General Concierge Inquiry" className="bg-white text-stone-900">General Concierge Inquiry</option>
+                <option value="December 1st Soft Launch VIP List">December 1st Soft Launch VIP List</option>
+                <option value="Tourism & Press Partnership">Tourism & Press Partnership</option>
+                <option value="Corporate Retreat / Private Buyout">Corporate Retreat / Private Buyout</option>
+                <option value="General Concierge Inquiry">General Concierge Inquiry</option>
               </select>
             </div>
 
             <div>
-              <label className="block text-xs sm:text-sm tracking-wider uppercase text-stone-800 mb-1.5 font-mono font-semibold">
+              <label className="block text-xs font-mono uppercase tracking-wider text-stone-800 mb-1.5 font-bold">
                 Notes or Special Requirements
               </label>
               <textarea
@@ -219,24 +208,24 @@ export default function InquiryModal({ isOpen, onClose }) {
                 placeholder="Share any specific dates, preferences, or questions..."
                 value={formData.message}
                 onChange={(e) => setFormData({ ...formData, message: e.target.value })}
-                className="w-full px-4 py-3 bg-stone-50 border border-stone-300 rounded-lg text-stone-900 placeholder-stone-500 text-sm sm:text-base focus:outline-none focus:border-amber-600 focus:bg-white focus:ring-1 focus:ring-amber-500 transition-colors resize-none"
+                className="w-full px-4 py-3 bg-stone-50 border border-stone-300 rounded-xl text-stone-900 placeholder-stone-400 text-sm focus:outline-none focus:border-[#8A661C] focus:bg-white focus:ring-1 focus:ring-[#8A661C] transition-colors resize-none"
               />
             </div>
 
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-3.5 sm:py-4 bg-[#B48A28] hover:bg-[#9E7719] disabled:bg-amber-400/50 text-white text-xs sm:text-sm font-bold tracking-wider uppercase transition-all duration-300 flex items-center justify-center space-x-2 mt-4 shadow-sm hover:shadow-md rounded-lg"
+              className="w-full py-3.5 bg-[#111111] hover:bg-[#2A2A2A] disabled:bg-stone-400 text-[#FBFBFA] text-xs font-mono font-bold tracking-widest uppercase transition-all duration-300 flex items-center justify-center space-x-2 mt-2 shadow-xs rounded-xl touch-manipulation min-h-[48px]"
             >
               {isLoading ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Submitting Inquiry...</span>
+                  <Loader2 className="w-4 h-4 animate-spin text-[#E0BB53]" />
+                  <span>Transmitting Inquiry...</span>
                 </>
               ) : (
                 <>
-                  <Send className="w-4 h-4" />
-                  <span>Submit Inquiry</span>
+                  <Send className="w-4 h-4 text-[#E0BB53]" />
+                  <span>Transmit Inquiry</span>
                 </>
               )}
             </button>

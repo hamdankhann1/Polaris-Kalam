@@ -4,7 +4,7 @@
 
 /* 
  * =========================================================================
- * GLOBAL LUXURY STYLING & ARCHITECTURAL AESTHETICS
+ * GLOBAL LUXURY STYLING, SMOOTH SCROLLING & RESPONSIVE MOTION
  * =========================================================================
  */
 
@@ -12,67 +12,319 @@
   color-scheme: light;
 }
 
-html,
+html {
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
 body {
   width: 100%;
   max-width: 100%;
-  overflow-x: hidden;
+  overflow-x: clip;
   position: relative;
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  background-color: #FAF9F5;
-  color: #1c1917;
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background-color: #FBFBFA;
+  color: #111111;
+  touch-action: manipulation;
 }
 
 *, ::before, ::after {
   box-sizing: border-box;
 }
 
-/* Subtle architectural coordinate grid in the background */
-.architectural-grid {
-  background-size: 60px 60px;
-  background-image: 
-    linear-gradient(to right, rgba(28, 25, 23, 0.035) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(28, 25, 23, 0.035) 1px, transparent 1px);
+/* Fluid Smooth Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-/* Luxury Glassmorphism Card Style */
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes floatGentle {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+@keyframes pulseGlow {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(1.15);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-slideUp {
+  animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-floatGentle {
+  animation: floatGentle 4s ease-in-out infinite;
+}
+
+.animate-pulseGlow {
+  animation: pulseGlow 2.5s ease-in-out infinite;
+}
+
+/* @echo__builds Inspired Interactive UI Primitives */
+
+/* 1. Floating Capsule Island Dock */
+.capsule-dock {
+  background: rgba(250, 249, 245, 0.92);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(28, 25, 23, 0.08);
+  box-shadow: 0 10px 30px -5px rgba(28, 25, 23, 0.06), 0 2px 8px -2px rgba(138, 102, 28, 0.04);
+  transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.capsule-dock:hover {
+  border-color: rgba(138, 102, 28, 0.22);
+  box-shadow: 0 14px 36px -6px rgba(28, 25, 23, 0.09), 0 4px 12px -2px rgba(138, 102, 28, 0.08);
+}
+
+/* 2. Tactile Interactive Card with Spring Physics */
+.interactive-card {
+  background: #FFFFFF;
+  border: 1px solid rgba(28, 25, 23, 0.08);
+  border-radius: 1.5rem;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+}
+
+.interactive-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(138, 102, 28, 0.3);
+  box-shadow: 0 20px 40px -12px rgba(28, 25, 23, 0.08), 0 4px 16px -2px rgba(138, 102, 28, 0.06);
+}
+
+/* 3. Spring Tactile Button */
+.spring-button {
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  touch-action: manipulation;
+}
+
+.spring-button:hover {
+  transform: translateY(-1.5px);
+}
+
+.spring-button:active {
+  transform: scale(0.97);
+}
+
+/* 4. Pin-Scroll Horizon Progress & Sticky Console */
+.horizon-progress-bar {
+  transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.sticky-pinned-console {
+  position: -webkit-sticky;
+  position: sticky;
+  top: 6.5rem;
+  will-change: transform;
+}
+
+/* 5. Luxury Glassmorphism Card Style */
 .glass-panel {
-  background: rgba(255, 255, 255, 0.88);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(180, 138, 40, 0.18);
-  box-shadow: 0 4px 20px -2px rgba(28, 25, 23, 0.04), 0 2px 6px -1px rgba(180, 138, 40, 0.04);
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(17, 17, 17, 0.08);
+  box-shadow: 0 4px 20px -2px rgba(17, 17, 17, 0.03), 0 2px 6px -1px rgba(138, 102, 28, 0.04);
 }
 
 .glass-panel:hover {
-  border-color: rgba(180, 138, 40, 0.4);
-  box-shadow: 0 12px 28px -4px rgba(28, 25, 23, 0.07), 0 4px 12px -2px rgba(180, 138, 40, 0.08);
+  border-color: rgba(138, 102, 28, 0.3);
+  box-shadow: 0 12px 28px -4px rgba(17, 17, 17, 0.06), 0 4px 12px -2px rgba(138, 102, 28, 0.08);
 }
 
 /* Fine Gold Hairline Accents */
 .gold-hairline {
-  background: linear-gradient(90deg, transparent, rgba(180, 138, 40, 0.5), transparent);
+  background: linear-gradient(90deg, transparent, rgba(138, 102, 28, 0.45), transparent);
 }
 
-/* Starlight Glow Effect */
-.starlight-glow {
-  background: radial-gradient(circle, rgba(212, 175, 55, 0.18) 0%, rgba(250, 249, 245, 0) 70%);
-}
-
-/* Custom Scrollbar for sleek modern feel */
+/* Custom Sleek Scrollbar */
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 5px;
+  height: 5px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #F5F2EB;
+  background: #F7F5F0;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #D5D0C5;
-  border-radius: 3px;
+  background: #D8D4C9;
+  border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #B48A28;
+  background: #8A661C;
+}
+
+/* Hide scrollbar for clean horizontal tab rows on mobile */
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* 
+ * =========================================================================
+ * SWISS ARCHITECTURAL GRID (Inspired by 3d-discovery.fr)
+ * =========================================================================
+ */
+
+@layer components {
+  .sg-section {
+    border-top: 1px solid rgba(17, 17, 17, 0.08);
+    border-bottom: 1px solid rgba(17, 17, 17, 0.08);
+    background-color: #FBFBFA;
+    position: relative;
+  }
+
+  .sg-tile {
+    position: relative;
+    border: 1px solid rgba(17, 17, 17, 0.08);
+    background-color: #FFFFFF;
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .sg-tile--travertine {
+    background-color: #FAF9F5;
+  }
+
+  .sg-tile--dark {
+    background-color: #111111 !important;
+    color: #FBFBFA !important;
+    border-color: rgba(255, 255, 255, 0.15) !important;
+  }
+
+  .sg-tile--link {
+    cursor: pointer;
+  }
+
+  .sg-tile--link:hover {
+    background-color: #FAF9F5;
+    border-color: rgba(138, 102, 28, 0.35);
+  }
+}
+
+.sg-label {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.6875rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #78716c;
+  font-weight: 600;
+}
+
+.sg-label--muted {
+  color: #a8a29e;
+}
+
+.sg-label--gold {
+  color: #8A661C;
+}
+
+.sg-display {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+  color: #111111;
+}
+
+.sg-stat {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  color: #111111;
+}
+
+/* Corner Crosshair Ticks */
+.sg-crosshair {
+  position: relative;
+}
+
+.sg-crosshair::before {
+  content: "+";
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-size: 11px;
+  color: rgba(17, 17, 17, 0.25);
+  pointer-events: none;
+}
+
+/* Progress Segment Bar */
+.sg-progress-seg {
+  height: 2px;
+  border-radius: 9999px;
+  background-color: rgba(17, 17, 17, 0.12);
+  transition: all 0.35s ease;
+  flex: 1;
+}
+
+.sg-progress-seg.active {
+  background-color: #8A661C;
+}
+
+/* Footer Wordmark Hairlines */
+.sg-wordmark-rule {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background-color: rgba(17, 17, 17, 0.08);
+  pointer-events: none;
+}
+
+/* 
+ * =========================================================================
+ * SWISS FRAMEWORK & SHOWCASE STYLING (Inspired by 3d-discovery.fr)
+ * =========================================================================
+ */
+
+.cap-showcase {
+  position: relative;
+  width: 100%;
+}
+
+/* Odometer / Counter Roll */
+.odometer-digit {
+  display: inline-block;
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
