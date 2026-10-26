@@ -1,170 +1,122 @@
 import React from "react";
-import { Mountain, ShieldCheck, Utensils, Waves, Sparkles, Compass, ArrowRight, ArrowUpRight } from "lucide-react";
+import { Sparkles, Mountain, ShieldCheck, Utensils, Waves } from "lucide-react";
 import { POLARIS_CONFIG } from "../polarisConfig";
-import PolarisStar3D from "./experience/PolarisStar3D";
 
 /**
  * =========================================================================
- * VisionSection Component — Swiss Key Figures & Experience Pillars
+ * VisionSection Component
  * =========================================================================
- * 
- * Inspired by 3d-discovery.fr's Key Figures and modular Swiss grid cards:
- * - Monumental stat figures (2,000M, 35°N, 4 Tiers, 100%)
- * - Interactive 3D Polaris Star beating mark canvas
- * - Architectural statement manifesto tile
- * - 4 modular experience pillars with corner crosshairs (+) and arrow indicators (→)
+ *
+ * Showcases Polaris Hotel's architectural concept & hospitality philosophy.
+ * Designed with pure typography and modern glassmorphism panels — NO IMAGES
+ * are used here, preserving the minimalist architectural aesthetic.
  */
 export default function VisionSection({ onOpenInquiry }) {
+  // Mapping of decorative icons for each pillar
   const pillarIcons = [
-    <Mountain className="w-5 h-5 text-[#8A661C]" />,
-    <Waves className="w-5 h-5 text-[#8A661C]" />,
-    <Utensils className="w-5 h-5 text-[#8A661C]" />,
-    <ShieldCheck className="w-5 h-5 text-[#8A661C]" />,
+    <Mountain className="w-5 h-5 text-[#B48A28]" />,
+    <ShieldCheck className="w-5 h-5 text-[#B48A28]" />,
+    <Utensils className="w-5 h-5 text-[#B48A28]" />,
+    <Waves className="w-5 h-5 text-[#B48A28]" />,
   ];
 
   return (
     <section
       id="vision"
-      className="relative w-full py-16 sm:py-24 px-4 sm:px-6 lg:px-10 overflow-hidden bg-[#FBFBFA]"
+      className="relative py-16 sm:py-24 md:py-28 px-3 sm:px-6 max-w-7xl mx-auto border-t border-stone-200/80 w-full max-w-full overflow-x-hidden"
     >
-      <div className="max-w-7xl mx-auto space-y-16 sm:space-y-20">
-        
-        {/* ========================================================================= */}
-        {/* 1. KEY FIGURES STRIP (Inspired by 3d-discovery.fr Key Figures) */}
-        {/* ========================================================================= */}
-        <div className="space-y-6">
-          <div className="flex items-center space-x-2 text-xs font-mono uppercase tracking-widest text-[#8A661C] font-bold">
-            <Sparkles className="w-3.5 h-3.5 text-[#8A661C]" />
-            <span>KEY FIGURES & SANCTUARY TELEMETRY</span>
-          </div>
+      {/* SECTION HEADER */}
+      <div className="max-w-3xl mb-12 sm:mb-16 md:mb-20">
+        <div className="inline-flex items-center space-x-2 text-[#8A661C] text-xs sm:text-sm font-mono tracking-wider uppercase mb-3 sm:mb-4 font-bold">
+          <Sparkles className="w-4 h-4 text-amber-600 shrink-0" />
+          <span>The Concept</span>
+        </div>
 
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-            <div className="sg-tile p-6 sm:p-8 rounded-2xl flex flex-col justify-between space-y-3 sg-crosshair">
-              <p className="sg-stat text-3xl sm:text-5xl lg:text-6xl">2,000M</p>
-              <div>
-                <p className="sg-label">Elevation</p>
-                <p className="text-xs text-stone-500 font-mono">6,562 Feet Altitude</p>
-              </div>
-            </div>
+        <h2 className="font-display text-2xl sm:text-4xl md:text-5xl font-medium tracking-tight sm:tracking-wide text-stone-900 uppercase mb-4 sm:mb-6 leading-tight">
+          A Masterpiece Conceived For The Modern Wanderer
+        </h2>
 
-            <div className="sg-tile p-6 sm:p-8 rounded-2xl flex flex-col justify-between space-y-3 sg-crosshair">
-              <p className="sg-stat text-3xl sm:text-5xl lg:text-6xl">35°29′N</p>
-              <div>
-                <p className="sg-label">Coordinates</p>
-                <p className="text-xs text-stone-500 font-mono">72°35′E · Swat Valley</p>
-              </div>
-            </div>
+        <p className="text-stone-700 text-sm sm:text-base md:text-lg leading-relaxed font-normal">
+          Polaris is rooted in Kalam Valley’s dramatic alpine topography. Every
+          element of the architecture is oriented toward the river currents,
+          pine forests, and star-filled skies, setting a new international
+          standard for tourism and hospitality in Pakistan.
+        </p>
+      </div>
 
-            <div className="sg-tile p-6 sm:p-8 rounded-2xl flex flex-col justify-between space-y-3 sg-crosshair">
-              <p className="sg-stat text-3xl sm:text-5xl lg:text-6xl">04</p>
-              <div>
-                <p className="sg-label">Vertical Horizons</p>
-                <p className="text-xs text-stone-500 font-mono">Riverside to Summit</p>
-              </div>
-            </div>
-
-            {/* Interactive 3D Beating Star Mark (Inspired by 3d-discovery.fr sg-mark-heart) */}
-            <div className="sg-tile p-4 sm:p-6 rounded-2xl flex flex-col justify-between items-center text-center sg-crosshair bg-[#FAF9F5] overflow-hidden">
-              <div className="w-full flex justify-between items-center text-[9px] font-mono text-stone-400">
-                <span>3D EMBLEM</span>
-                <span className="text-[#8A661C] animate-pulse">● LIVE</span>
-              </div>
-              <div className="w-24 h-24 sm:w-28 sm:h-28 my-auto">
-                <PolarisStar3D />
-              </div>
-              <div>
-                <p className="sg-label sg-label--gold">North Star Mark</p>
-                <p className="text-[10px] text-stone-400 font-mono">Celestial Solitude</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Architectural Statement Manifesto Tile */}
-          <div className="sg-tile p-6 sm:p-10 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-6 sg-crosshair bg-stone-50/60">
-            <div className="space-y-2 max-w-2xl">
-              <span className="text-[10px] font-mono uppercase tracking-widest text-[#8A661C] font-bold block">
-                ARCHITECTURAL MANIFESTO
+      {/* ------------------------------------------------------------- */}
+      {/* 4 ARCHITECTURAL PILLARS (Pure typography, no images)          */}
+      {/* ------------------------------------------------------------- */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 sm:gap-6 lg:gap-8 mb-12 sm:mb-16 md:mb-20">
+        {POLARIS_CONFIG.pillars.map((pillar, idx) => (
+          <div
+            key={idx}
+            className="group relative p-6 sm:p-8 md:p-10 glass-panel rounded-2xl transition-all duration-300 hover:-translate-y-1 hover:border-amber-400/60 shadow-xs"
+          >
+            {/* Top row: Number and Category */}
+            <div className="flex items-center justify-between mb-6 sm:mb-8 pb-3 sm:pb-4 border-b border-stone-200/80">
+              <span className="font-mono text-xs sm:text-sm tracking-wider text-[#8A661C] font-bold">
+                {pillar.number} // {pillar.category}
               </span>
-              <p className="font-serif text-lg sm:text-xl text-stone-900 font-normal leading-relaxed">
-                “We design a sanctuary that reveals the untouched: century-old Himalayan cedar canopies, glacial meltwater streams, and pristine Karakoram starlight. Every detail is calibrated for altitude solitude and thermal restoration.”
-              </p>
-            </div>
-
-            {onOpenInquiry && (
-              <button
-                onClick={onOpenInquiry}
-                className="px-5 py-3 rounded-xl border border-stone-300 hover:border-stone-900 bg-white hover:bg-stone-50 text-stone-900 text-xs font-mono uppercase tracking-wider font-bold transition-all flex items-center justify-center space-x-2 shrink-0 spring-button group"
-              >
-                <span>Concierge Protocol</span>
-                <ArrowRight className="w-3.5 h-3.5 text-[#8A661C] group-hover:translate-x-1 transition-transform" />
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* ========================================================================= */}
-        {/* 2. ARCHITECTURAL EXPERIENCE PILLARS (Inspired by 3d-discovery.fr Solutions) */}
-        {/* ========================================================================= */}
-        <div className="space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pb-4 border-b border-stone-200">
-            <div>
-              <div className="inline-flex items-center space-x-2 text-xs font-mono uppercase tracking-wider text-[#8A661C] font-bold mb-1">
-                <Compass className="w-3.5 h-3.5 text-[#8A661C]" />
-                <span>THE SANCTUARY STANDARDS</span>
+              <div className="p-2 sm:p-2.5 rounded-full bg-amber-50/90 border border-amber-200/80 group-hover:border-amber-400 transition-colors">
+                {pillarIcons[idx % pillarIcons.length]}
               </div>
-              <h2 className="font-display text-3xl sm:text-4xl md:text-5xl font-normal tracking-tight text-stone-900">
-                Crafted for High Alpine Solitude
-              </h2>
             </div>
 
-            <p className="text-xs sm:text-sm text-stone-500 font-mono max-w-sm">
-              Rooted in Kalam Valley's dramatic topography, oriented toward glacial meltwater and celestial Karakoram skies.
+            {/* Pillar Title */}
+            <h3 className="font-display text-xl sm:text-2xl text-stone-900 font-medium mb-3 sm:mb-4 tracking-wide group-hover:text-[#B48A28] transition-colors">
+              {pillar.title}
+            </h3>
+
+            {/* Description */}
+            <p className="text-stone-700 text-sm sm:text-base leading-relaxed font-normal">
+              {pillar.description}
             </p>
+
+            {/* Bottom fine hover line */}
+            <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-amber-400/0 group-hover:bg-[#B48A28] transition-all duration-500 rounded-b-2xl" />
           </div>
+        ))}
+      </div>
 
-          {/* 4 Swiss Grid Experience Pillar Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
-            {POLARIS_CONFIG.pillars.map((pillar, idx) => (
-              <div
-                key={idx}
-                className="sg-tile rounded-2xl p-7 sm:p-9 flex flex-col justify-between space-y-6 group sg-crosshair"
-              >
-                <div className="flex items-center justify-between pb-4 border-b border-stone-150">
-                  <div className="flex items-center space-x-3">
-                    <span className="font-mono text-xs tracking-widest text-stone-400 font-bold">
-                      0{pillar.number}
-                    </span>
-                    <span className="font-mono text-xs tracking-wider uppercase text-[#8A661C] font-semibold">
-                      // {pillar.category}
-                    </span>
-                  </div>
-
-                  <div className="p-2.5 rounded-xl border border-stone-200/80 bg-stone-50 group-hover:bg-amber-50 group-hover:border-amber-200/80 transition-all duration-300">
-                    {pillarIcons[idx % pillarIcons.length]}
-                  </div>
-                </div>
-
-                <div className="space-y-2.5">
-                  <h3 className="font-serif text-xl sm:text-2xl text-stone-900 font-medium group-hover:text-[#8A661C] transition-colors">
-                    {pillar.title}
-                  </h3>
-                  <p className="text-stone-600 text-xs sm:text-sm leading-relaxed font-normal">
-                    {pillar.description}
-                  </p>
-                </div>
-
-                <div className="pt-3 border-t border-stone-150 text-[10.5px] font-mono tracking-wider uppercase text-stone-400 flex items-center justify-between">
-                  <span>Polaris Sanctuary Standard</span>
-                  <span className="text-[#8A661C] flex items-center space-x-1 group-hover:translate-x-1 transition-transform">
-                    <span>Explore</span>
-                    <span>→</span>
-                  </span>
-                </div>
-              </div>
-            ))}
+      {/* ------------------------------------------------------------- */}
+      {/* ARCHITECTURAL SPECIFICATIONS ACCORDION / STATS STRIP          */}
+      {/* ------------------------------------------------------------- */}
+      <div className="p-6 sm:p-8 md:p-10 glass-panel rounded-2xl border border-stone-200/90 bg-gradient-to-r from-white via-amber-50/40 to-white shadow-xs">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 text-center">
+          <div className="p-3 sm:p-4 rounded-xl bg-white/60 border border-stone-200/60 shadow-2xs">
+            <div className="text-xs uppercase tracking-wider text-stone-600 mb-1.5 font-mono font-bold">
+              Location
+            </div>
+            <div className="text-sm sm:text-base md:text-lg font-display text-stone-900 font-semibold">
+              Kalam Valley, Swat
+            </div>
+          </div>
+          <div className="p-3 sm:p-4 rounded-xl bg-white/60 border border-stone-200/60 shadow-2xs">
+            <div className="text-xs uppercase tracking-wider text-stone-600 mb-1.5 font-mono font-bold">
+              Elevation
+            </div>
+            <div className="text-sm sm:text-base md:text-lg font-display text-stone-900 font-semibold">
+              2,000m Above Sea
+            </div>
+          </div>
+          <div className="p-3 sm:p-4 rounded-xl bg-white/60 border border-stone-200/60 shadow-2xs">
+            <div className="text-xs uppercase tracking-wider text-stone-600 mb-1.5 font-mono font-bold">
+              Status
+            </div>
+            <div className="text-sm sm:text-base md:text-lg font-display text-[#B48A28] font-bold">
+              Under Construction
+            </div>
+          </div>
+          <div className="p-3 sm:p-4 rounded-xl bg-white/60 border border-stone-200/60 shadow-2xs">
+            <div className="text-xs uppercase tracking-wider text-stone-600 mb-1.5 font-mono font-bold">
+              Target Opening
+            </div>
+            <div className="text-sm sm:text-base md:text-lg font-display text-stone-900 font-semibold">
+              Winter 2026
+            </div>
           </div>
         </div>
-
       </div>
     </section>
   );

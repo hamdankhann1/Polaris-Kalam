@@ -87,7 +87,6 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 3000,
       host: true, // Enables connecting from mobile phones on local network (e.g. http://192.168.x.x:3000)
-      allowedHosts: true,
       open: false,
     },
   };

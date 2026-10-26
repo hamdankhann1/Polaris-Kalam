@@ -21,9 +21,6 @@ import {
   Layers,
   Building2,
   Check,
-  Users,
-  Maximize2,
-  Clock
 } from "lucide-react";
 import { POLARIS_CONFIG } from "../../polarisConfig";
 import {
@@ -42,8 +39,7 @@ import { formatYMD, getTodayYMD, addDaysYMD, diffDaysYMD } from "../../utils/dat
  * =========================================================================
  *
  * Ultra-clean, minimal, luxury booking portal.
- * Optimized for flawless touch interaction on phone, tablet, and desktop.
- * Guests browse rooms categorized by 4 vertical tiers,
+ * Guests can browse rooms categorized by 4 floors and one top suite,
  * view live availability with coordinated calendar date locking,
  * and submit a reservation request to be contacted directly via WhatsApp.
  */
@@ -52,7 +48,6 @@ export default function BookingPage({
   isAdmin = false,
   onReturnToAdmin,
   onLogout,
-  initialCategory = null,
 }) {
   const [rooms, setRooms] = useState([]);
   const [bookingRequests, setBookingRequests] = useState([]);
@@ -75,7 +70,7 @@ export default function BookingPage({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
 
-  // Prevent background body scroll when booking modal is open
+  // Prevent background body scroll when booking modal is open on iOS / mobile
   useEffect(() => {
     if (isModalOpen) {
       const originalStyle = window.getComputedStyle(document.body).overflow;
@@ -89,29 +84,25 @@ export default function BookingPage({
   useEffect(() => {
     async function load() {
       setIsLoading(true);
-      try {
-        const [roomsData, reqsData] = await Promise.all([
-          RoomService.getRooms(),
-          BookingRequestService.getRequests(),
-        ]);
-        setRooms(roomsData || []);
-        setBookingRequests(reqsData || []);
-      } catch (err) {
-        console.error("Error loading booking inventory:", err);
-      } finally {
-        setIsLoading(false);
-      }
+      const [roomsData, reqsData] = await Promise.all([
+        RoomService.getRooms(),
+        BookingRequestService.getRequests(),
+      ]);
+      setRooms(roomsData);
+      setBookingRequests(reqsData);
+      setIsLoading(false);
     }
     load();
 
     const unsubRooms = RoomService.subscribe((updatedRooms) => {
-      setRooms(updatedRooms || []);
+      setRooms(updatedRooms);
     });
 
     const unsubReqs = BookingRequestService.subscribe((updatedReqs) => {
-      setBookingRequests(updatedReqs || []);
+      setBookingRequests(updatedReqs);
     });
 
+    // 1. Cross-component custom event listeners (instantaneous sync within same window)
     const handleRoomUpdate = (e) => {
       if (e.detail && Array.isArray(e.detail)) {
         setRooms([...e.detail]);
@@ -125,14 +116,15 @@ export default function BookingPage({
     window.addEventListener("polaris:room-update", handleRoomUpdate);
     window.addEventListener("polaris:booking-update", handleBookingUpdate);
 
+    // 2. Window focus & visibility refresh for multi-tab booking coordination
     const handleFocus = async () => {
       try {
         const [freshRooms, freshReqs] = await Promise.all([
           RoomService.getRooms(),
           BookingRequestService.getRequests(),
         ]);
-        setRooms(freshRooms || []);
-        setBookingRequests(freshReqs || []);
+        setRooms(freshRooms);
+        setBookingRequests(freshReqs);
       } catch (err) {
         // silent
       }
@@ -145,6 +137,7 @@ export default function BookingPage({
     };
     document.addEventListener("visibilitychange", handleVisibility);
 
+    // 3. Relaxed 30-second database polling (syncs room status/locks across phones & laptops live)
     const pollInterval = setInterval(() => {
       if (document.visibilityState === "visible") {
         handleFocus();
@@ -167,7 +160,7 @@ export default function BookingPage({
     return groupRoomsByCategory(rooms, bookingRequests);
   }, [rooms, bookingRequests]);
 
-  // Keep selectedCategory in sync with latest live room data
+  // Keep selectedCategory in sync with latest live room data from database
   useEffect(() => {
     if (selectedCategory) {
       const live = categories.find(
@@ -178,25 +171,6 @@ export default function BookingPage({
       }
     }
   }, [categories, selectedCategory]);
-
-  // Auto-open modal for initialCategory if passed from homepage suite selection
-  useEffect(() => {
-    if (initialCategory && categories.length > 0 && !selectedCategory) {
-      const match = categories.find(
-        (c) =>
-          c.name.toLowerCase().includes(initialCategory.toLowerCase()) ||
-          (c.id && c.id.toLowerCase().includes(initialCategory.toLowerCase())) ||
-          (Array.isArray(c.rooms) && c.rooms.some((r) => 
-            (r.floor && r.floor.toLowerCase().includes(initialCategory.toLowerCase())) ||
-            (r.name && r.name.toLowerCase().includes(initialCategory.toLowerCase()))
-          ))
-      );
-      if (match) {
-        setSelectedCategory(match);
-        setIsModalOpen(true);
-      }
-    }
-  }, [initialCategory, categories, selectedCategory]);
 
   // Compute live available rooms within the selected category for the selected date range
   const availableRoomsForRange = useMemo(() => {
@@ -211,7 +185,7 @@ export default function BookingPage({
     );
   }, [selectedCategory, checkIn, checkOut, bookingRequests]);
 
-  // Group rooms into distinct floor or room options
+  // Group rooms into distinct floor or room options with exact prices & room numbers
   const floorOrRoomOptions = useMemo(() => {
     if (!selectedCategory || !Array.isArray(selectedCategory.rooms)) return [];
 
@@ -244,6 +218,7 @@ export default function BookingPage({
 
     const categoryRooms = selectedCategory.rooms;
 
+    // Filter available rooms for target stay range
     let candidates = categoryRooms;
     if (checkIn && checkOut) {
       const available = getAvailableRoomsForCategory(
@@ -257,6 +232,7 @@ export default function BookingPage({
       }
     }
 
+    // 1. If guest selected a specific floor or room
     if (selectedFloorPreference) {
       const matchByRoom = candidates.find(
         (r) => r.id === selectedFloorPreference || r.roomNumber === selectedFloorPreference
@@ -268,6 +244,7 @@ export default function BookingPage({
       );
       if (matchByFloor) return matchByFloor;
 
+      // Fallback: search across all category rooms (for preview)
       const anyMatch = categoryRooms.find(
         (r) =>
           r.id === selectedFloorPreference ||
@@ -277,6 +254,8 @@ export default function BookingPage({
       if (anyMatch) return anyMatch;
     }
 
+    // 2. "No Preference (Best Available)":
+    // Sort candidates by price ascending to automatically allocate the best value suite
     const sorted = [...candidates].sort(
       (a, b) => (Number(a.pricePKR) || 0) - (Number(b.pricePKR) || 0)
     );
@@ -284,6 +263,7 @@ export default function BookingPage({
     return sorted[0] || categoryRooms[0];
   }, [selectedCategory, checkIn, checkOut, bookingRequests, selectedFloorPreference]);
 
+  // Active nightly rate dynamically reactive to chosen suite/preference
   const currentNightlyPrice = useMemo(() => {
     if (currentAssignedRoom && Number(currentAssignedRoom.pricePKR) > 0) {
       return Number(currentAssignedRoom.pricePKR);
@@ -291,11 +271,13 @@ export default function BookingPage({
     return selectedCategory?.minPrice || 45000;
   }, [currentAssignedRoom, selectedCategory]);
 
+  // Number of nights for the selected stay
   const nightsCount = useMemo(() => {
     if (!checkIn || !checkOut) return 0;
     return diffDaysYMD(checkIn, checkOut);
   }, [checkIn, checkOut]);
 
+  // Booked dates reactive to chosen floor/suite (or whole category for Best Available)
   const activeBookedDates = useMemo(() => {
     if (!selectedCategory) return [];
     if (!selectedFloorPreference) {
@@ -322,12 +304,16 @@ export default function BookingPage({
     const catBooked = category.bookedDates || [];
     const today = getTodayYMD();
 
+    // Find next available start date beginning from today
     let startD = today;
     while (catBooked.includes(startD)) {
       startD = addDaysYMD(startD, 1);
     }
 
+    // Default 3 nights if free, or leave checkout open for calendar selection
     let endStr = addDaysYMD(startD, 3);
+
+    // If any night in between has zero suites available, leave checkout blank so guest picks
     const nights = RoomService.getBookedNightsInRange
       ? RoomService.getBookedNightsInRange(startD, endStr)
       : [];
@@ -346,10 +332,13 @@ export default function BookingPage({
     if (!selectedCategory || isSubmitting) return;
 
     if (!checkIn || !checkOut) {
-      alert("Please select both your Check-In and Check-Out dates on the suite calendar.");
+      alert(
+        "Please select both your Check-In and Check-Out dates on the suite calendar."
+      );
       return;
     }
 
+    // Check available suites in this category for the requested stay
     const available = getAvailableRoomsForCategory(
       selectedCategory.rooms,
       checkIn,
@@ -358,10 +347,13 @@ export default function BookingPage({
     );
 
     if (!available || available.length === 0) {
-      alert(`All ${selectedCategory.totalRooms} suites in "${selectedCategory.name}" are occupied for the dates ${checkIn} to ${checkOut}. Please choose alternative dates.`);
+      alert(
+        `All ${selectedCategory.totalRooms} suites in "${selectedCategory.name}" are occupied for the dates ${checkIn} to ${checkOut}. Please choose alternative dates.`
+      );
       return;
     }
 
+    // Allocate suite: prioritize match for guest's choice if available, else best available
     let assignedRoom = null;
     if (selectedFloorPreference) {
       assignedRoom = available.find(
@@ -409,6 +401,7 @@ export default function BookingPage({
     }
   };
 
+  // Filter categories by floor or tier if selected
   const filteredCategories = useMemo(() => {
     if (selectedFloor === "all") return categories;
     return categories.filter((cat) => {
@@ -422,26 +415,25 @@ export default function BookingPage({
   }, [categories, selectedFloor]);
 
   return (
-    <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-[#FBFBFA] text-[#111111] flex flex-col font-sans selection:bg-[#111111] selection:text-[#FBFBFA]">
-      
-      {/* 1. DISCREET STAFF MANAGEMENT BAR (Only visible if admin session) */}
+    <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-[#FAF9F5] text-stone-900 flex flex-col font-sans selection:bg-amber-200 selection:text-stone-900">
+      {/* Discreet Staff Management Bar (Visible ONLY when logged in as admin) */}
       {isAdmin && (
-        <div className="bg-[#111111] text-[#FBFBFA] border-b border-[#8A661C]/40 px-3 sm:px-6 py-2 flex items-center justify-between text-xs font-mono shadow-sm z-50 w-full overflow-hidden">
-          <div className="flex items-center space-x-2 min-w-0">
-            <span className="w-2 h-2 rounded-full bg-[#E0BB53] animate-pulse shrink-0" />
-            <span className="text-[#E0BB53] font-semibold tracking-wider uppercase text-[11px] truncate">
+        <div className="bg-stone-900 text-stone-200 border-b border-[#B48A28]/50 px-3 sm:px-6 py-2 flex items-center justify-between text-xs font-mono shadow-md z-50 w-full max-w-full overflow-hidden">
+          <div className="flex items-center space-x-2 sm:space-x-2.5 min-w-0">
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
+            <span className="text-amber-300 font-semibold tracking-wider uppercase text-[10.5px] sm:text-[11px] truncate">
               Staff Session Active
             </span>
-            <span className="text-stone-500 hidden sm:inline">•</span>
-            <span className="text-stone-300 font-light hidden sm:inline">
-              Live Direct Reservation Preview
+            <span className="text-stone-600 hidden sm:inline">•</span>
+            <span className="text-stone-400 font-light hidden sm:inline">
+              Guest Booking Live Preview
             </span>
           </div>
-          <div className="flex items-center space-x-2 shrink-0">
+          <div className="flex items-center space-x-1.5 sm:space-x-3 shrink-0">
             {onReturnToAdmin && (
               <button
                 onClick={onReturnToAdmin}
-                className="px-2.5 py-1 rounded bg-[#8A661C] hover:bg-[#A37B24] text-white font-medium text-[10.5px] tracking-wider uppercase transition-colors flex items-center space-x-1"
+                className="px-2.5 sm:px-3 py-1 rounded-md bg-[#B48A28] hover:bg-amber-600 text-white font-medium text-[10.5px] sm:text-[11px] tracking-wider uppercase transition-colors flex items-center space-x-1 sm:space-x-1.5 shadow-2xs"
               >
                 <ArrowLeft className="w-3 h-3 shrink-0" />
                 <span>Return</span>
@@ -450,10 +442,10 @@ export default function BookingPage({
             {onLogout && (
               <button
                 onClick={onLogout}
-                className="px-2 py-1 rounded border border-stone-700 hover:border-rose-400 hover:text-rose-400 text-stone-400 text-[10.5px] tracking-wider uppercase transition-colors flex items-center space-x-1"
-                title="End Staff Session"
+                className="px-2 sm:px-2.5 py-1 rounded-md border border-stone-700 hover:border-rose-400 hover:text-rose-400 text-stone-400 text-[10.5px] sm:text-[11px] tracking-wider uppercase transition-colors flex items-center space-x-1 sm:space-x-1.5"
+                title="End Staff Session & Auto-Logout"
               >
-                <Lock className="w-3 h-3 shrink-0" />
+                <Lock className="w-3 h-3 text-stone-400 shrink-0" />
                 <span>Exit</span>
               </button>
             )}
@@ -461,76 +453,86 @@ export default function BookingPage({
         </div>
       )}
 
-      {/* 2. RESPONSIVE COMPACT NAVIGATION HEADER (Touch friendly) */}
-      <header className="sticky top-0 z-40 bg-[#FBFBFA]/95 backdrop-blur-md border-b border-[#111111]/10 shadow-2xs w-full">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-10 h-16 sm:h-20 flex items-center justify-between gap-3 w-full">
-          
-          {/* Brand Monogram */}
-          <div className="flex items-center space-x-2.5 sm:space-x-3.5 min-w-0">
-            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full border border-[#111111]/20 flex items-center justify-center bg-white p-1.5 shadow-2xs shrink-0">
+      {/* =========================================================================
+          TOP MINIMAL HEADER
+          ========================================================================= */}
+      <header className="sticky top-0 z-40 bg-[#FAF9F5]/90 backdrop-blur-md border-b border-stone-200/80 shadow-2xs w-full max-w-full overflow-hidden">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 py-3 sm:py-0 sm:h-20 flex flex-col sm:flex-row items-center justify-between gap-2.5 sm:gap-0 w-full max-w-full">
+          {/* Brand */}
+          <div className="flex items-center space-x-2.5 sm:space-x-3.5 min-w-0 max-w-full">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full border border-amber-500/30 flex items-center justify-center bg-white p-1.5 shadow-2xs shrink-0">
               <img
                 src={POLARIS_CONFIG.emblem}
-                alt="Polaris Star Emblem"
-                className="w-full h-full object-contain"
+                alt="Polaris Star"
+                className="w-full h-full object-contain filter drop-shadow-[0_1px_3px_rgba(180,138,40,0.3)]"
               />
             </div>
             <div className="min-w-0">
-              <div className="flex items-center space-x-2">
-                <span className="font-display text-base sm:text-xl tracking-[0.18em] font-semibold text-[#111111] truncate">
+              <div className="flex items-center space-x-1.5 sm:space-x-2">
+                <span className="font-display text-base sm:text-xl tracking-[0.16em] sm:tracking-[0.22em] font-semibold text-stone-900 truncate">
                   POLARIS
                 </span>
-                <span className="text-[9px] sm:text-[10px] font-mono tracking-wider px-2 py-0.5 rounded bg-stone-100 border border-stone-200 text-[#111111] uppercase font-bold shrink-0">
-                  RESERVATIONS
+                <span className="text-[9px] sm:text-xs font-mono tracking-wider px-2 py-0.5 rounded bg-stone-100 border border-stone-200 text-stone-800 uppercase font-bold shrink-0">
+                  DIRECT RESERVATIONS
                 </span>
               </div>
-              <p className="text-[10px] sm:text-xs tracking-wider text-[#8A661C] uppercase font-mono font-bold truncate">
-                Kalam Valley, Swat • 2,000M
+              <p className="text-[10.5px] sm:text-xs tracking-wider text-[#8A661C] uppercase font-mono font-bold mt-0.5 truncate max-w-[240px] sm:max-w-none">
+                <span className="hidden sm:inline">Kalam Valley, Swat </span>
               </p>
             </div>
           </div>
 
-          {/* Return Action with 44px touch target */}
+          {/* Return Action */}
           <button
             onClick={onReturnHome}
-            className="px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-lg border border-[#111111]/25 hover:border-[#111111] hover:bg-[#111111]/5 text-xs sm:text-sm font-mono uppercase tracking-wider text-[#111111] font-semibold transition-all flex items-center justify-center space-x-1.5 shrink-0 touch-manipulation min-h-[40px] sm:min-h-[44px]"
+            className="w-full sm:w-auto px-4 py-2 sm:py-2.5 rounded-lg border border-stone-300 hover:border-amber-600 hover:bg-amber-50/60 text-xs sm:text-sm font-mono uppercase tracking-wider text-stone-800 hover:text-stone-900 font-semibold transition-all flex items-center justify-center space-x-2 shadow-2xs shrink-0"
           >
-            <ArrowLeft className="w-4 h-4 text-[#8A661C] shrink-0" />
-            <span className="hidden sm:inline">Return to Sanctuary</span>
-            <span className="sm:hidden">Sanctuary</span>
+            <ArrowLeft className="w-4 h-4 text-[#B48A28] shrink-0" />
+            <span>Return to Sanctuary</span>
           </button>
         </div>
       </header>
 
-      {/* 3. EDITORIAL HERO STATEMENT */}
-      <section className="relative pt-8 sm:pt-12 pb-6 px-4 sm:px-6 text-center max-w-4xl mx-auto w-full">
-        <div className="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full border border-[#8A661C]/30 bg-amber-50/70 text-[#8A661C] text-[11px] font-mono tracking-wider uppercase mb-3 font-bold">
-          <Sparkles className="w-3.5 h-3.5 text-[#8A661C] shrink-0" />
-          <span>Inaugural Season 2026 • Private Concierge Allocation</span>
+      {/* =========================================================================
+          HERO STATEMENT
+          ========================================================================= */}
+      <section className="relative pt-10 sm:pt-14 pb-6 sm:pb-8 px-3 sm:px-6 text-center max-w-4xl mx-auto w-full max-w-full">
+        <div className="inline-flex items-center space-x-2 px-3 sm:px-3.5 py-1.5 rounded-full border border-amber-300/80 bg-amber-50 text-[#8A661C] text-xs font-mono tracking-wider uppercase mb-4 shadow-2xs font-bold max-w-[92vw]">
+          <Sparkles className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+          <span className="truncate">
+            <span className="hidden sm:inline">Inaugural Season 2026 • </span>
+            Private Concierge Allocation
+          </span>
         </div>
 
-        <h1 className="font-display text-3xl sm:text-5xl md:text-6xl text-[#111111] font-normal tracking-tight leading-[1.05] uppercase">
+        <h1 className="font-display text-3xl sm:text-5xl md:text-6xl text-stone-900 font-medium tracking-tight leading-tight px-2">
           Select Your Alpine Sanctuary
         </h1>
 
-        <p className="text-xs sm:text-base text-stone-600 font-normal mt-3 max-w-2xl mx-auto leading-relaxed">
-          Monolithic cedar timber, heated glacial basalt, and unobstructed horizon glass.
-          Select your suite tier to view live calendar availability. Our concierge desk confirms directly via <strong className="text-[#111111] font-semibold">WhatsApp</strong>.
+        <p className="text-sm sm:text-base md:text-lg text-stone-700 font-normal mt-4 max-w-2xl mx-auto leading-relaxed px-2">
+          Crafted with monolithic stone, heated cedar wood, and unobstructed
+          glacial glass. Select an available suite to submit your reservation
+          request. Our concierge desk will contact you directly on{" "}
+          <strong className="font-semibold text-stone-900">WhatsApp</strong> to
+          finalize your booking.
         </p>
       </section>
 
-      {/* 4. HORIZONTAL ROOM TYPE FILTER TABS (Smooth touch scroll) */}
+      {/* =========================================================================
+          CATEGORY / ROOM TYPE FILTER TABS
+          ========================================================================= */}
       {categories.length > 0 && (
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 w-full mb-8 overflow-hidden">
-          <div className="flex items-center justify-start sm:justify-center space-x-2 overflow-x-auto pb-2 scrollbar-none w-full touch-pan-x">
+        <div className="max-w-7xl mx-auto px-2 sm:px-6 w-full max-w-full mb-8 overflow-hidden">
+          <div className="flex items-center justify-start sm:justify-center space-x-2 overflow-x-auto pb-2 px-2 scrollbar-none w-full max-w-full">
             <button
               onClick={() => setSelectedFloor("all")}
-              className={`px-4 py-2.5 rounded-lg text-xs font-mono uppercase tracking-wider transition-all shrink-0 font-semibold touch-manipulation min-h-[42px] ${
+              className={`px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-mono uppercase tracking-wider transition-all shrink-0 font-semibold ${
                 selectedFloor === "all"
-                  ? "bg-[#111111] text-[#FBFBFA] shadow-xs"
-                  : "bg-white text-stone-700 hover:text-[#111111] border border-stone-200 shadow-2xs"
+                  ? "bg-[#B48A28] text-white font-bold shadow-xs"
+                  : "bg-white text-stone-700 hover:text-stone-900 border border-stone-300 shadow-2xs"
               }`}
             >
-              All Tiers ({categories.length})
+              All Room Types ({categories.length} {categories.length === 1 ? "Category" : "Categories"})
             </button>
 
             {categories.map((cat) => {
@@ -541,15 +543,17 @@ export default function BookingPage({
                 <button
                   key={cat.id || cat.name}
                   onClick={() => setSelectedFloor(isSelected ? "all" : cat.name)}
-                  className={`px-4 py-2.5 rounded-lg text-xs font-mono uppercase tracking-wider transition-all shrink-0 flex items-center space-x-1.5 font-semibold touch-manipulation min-h-[42px] ${
+                  className={`px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-mono uppercase tracking-wider transition-all shrink-0 flex items-center space-x-1.5 font-semibold ${
                     isSelected
-                      ? "bg-[#111111] text-[#FBFBFA] shadow-xs"
+                      ? "bg-[#B48A28] text-white font-bold shadow-xs"
                       : isTop
-                      ? "bg-amber-50 text-[#8A661C] border border-[#8A661C]/40 hover:bg-amber-100/50"
-                      : "bg-white text-stone-700 hover:text-[#111111] border border-stone-200 shadow-2xs"
+                        ? "bg-amber-50 text-[#8A661C] border border-amber-300 hover:bg-amber-100/60 font-bold"
+                        : "bg-white text-stone-700 hover:text-stone-900 border border-stone-300 shadow-2xs"
                   }`}
                 >
-                  {isTop && <Crown className="w-3.5 h-3.5 text-[#8A661C] shrink-0" />}
+                  {isTop && (
+                    <Crown className="w-3.5 h-3.5 text-[#B48A28] shrink-0" />
+                  )}
                   <span>{cat.name}</span>
                 </button>
               );
@@ -558,155 +562,175 @@ export default function BookingPage({
         </div>
       )}
 
-      {/* 5. ROOM CATEGORIES GRID WITH CURATED IMAGES & PROMINENT ICONS */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 pb-20 sm:pb-28 w-full flex-1">
+      {/* =========================================================================
+          ROOM CATEGORIES GRID
+          ========================================================================= */}
+      <main className="max-w-7xl mx-auto px-3 sm:px-6 pb-20 sm:pb-24 w-full max-w-full flex-1">
         {isLoading ? (
-          <div className="py-24 text-center text-stone-500 font-mono text-xs sm:text-sm">
-            <div className="animate-pulse">SYNCHRONIZING POLARIS SUITE INVENTORY...</div>
+          <div className="py-20 text-center text-stone-600 font-mono text-sm sm:text-base font-medium">
+            Loading room categories and availability...
           </div>
         ) : categories.length === 0 ? (
-          <div className="py-16 text-center rounded-3xl bg-white border border-stone-200 p-8 max-w-xl mx-auto space-y-4">
-            <Sparkles className="w-10 h-10 text-[#8A661C] mx-auto" />
-            <h3 className="font-display text-2xl text-[#111111]">Seasonal Allocation in Progress</h3>
-            <p className="text-xs sm:text-sm text-stone-600">
-              For direct concierge reservations, contact our front desk on WhatsApp.
-            </p>
-            <a
-              href={`https://wa.me/${POLARIS_CONFIG.contact.phone.replace(/[^0-9]/g, '')}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center space-x-2 px-6 py-3 bg-[#111111] text-[#FBFBFA] text-xs font-mono uppercase tracking-widest font-semibold rounded-xl"
-            >
-              <MessageSquare className="w-4 h-4 text-[#E0BB53]" />
-              <span>Inquire on WhatsApp</span>
-            </a>
+          <div className="py-16 sm:py-24 text-center rounded-3xl bg-white border border-stone-200/90 p-8 sm:p-12 shadow-xs max-w-2xl mx-auto my-6 space-y-5 animate-fadeIn">
+            <div className="w-16 h-16 rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center text-[#B48A28] mx-auto shadow-2xs">
+              <Sparkles className="w-8 h-8 text-[#B48A28]" />
+            </div>
+            <div className="space-y-2">
+              <h3 className="font-display text-2xl sm:text-3xl text-stone-900 font-medium tracking-tight">
+                Seasonal Inventory Allocation in Progress
+              </h3>
+              <p className="text-sm sm:text-base text-stone-600 max-w-md mx-auto leading-relaxed">
+                Our suite catalog is currently being updated by the concierge desk. For immediate bespoke reservations, private group inquiries, or custom dates, contact our concierge directly.
+              </p>
+            </div>
+            <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+              <a
+                href={`https://wa.me/${POLARIS_CONFIG.contact.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent('Hello Polaris Kalam Concierge, I would like to inquire about suite availability and reservations.')}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full sm:w-auto px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-mono uppercase tracking-wider font-bold transition-all flex items-center justify-center space-x-2 shadow-sm hover:scale-[1.01]"
+              >
+                <MessageSquare className="w-4 h-4" />
+                <span>Chat on WhatsApp ({POLARIS_CONFIG.contact.phone})</span>
+              </a>
+              <button
+                onClick={onReturnHome}
+                className="w-full sm:w-auto px-5 py-3 rounded-xl border border-stone-300 hover:border-stone-400 bg-white hover:bg-stone-50 text-stone-700 text-xs font-mono uppercase tracking-wider font-semibold transition-all flex items-center justify-center space-x-2 shadow-2xs"
+              >
+                <ArrowLeft className="w-4 h-4 text-stone-500" />
+                <span>Return to Homepage</span>
+              </button>
+            </div>
           </div>
         ) : filteredCategories.length === 0 ? (
-          <div className="py-16 text-center text-stone-500 font-mono text-xs">
-            No suites listed for this filter.
+          <div className="py-16 text-center text-stone-600 font-mono text-sm sm:text-base font-medium">
+            No suites currently listed for this category filter.
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
             {filteredCategories.map((cat) => {
               const isTop = cat.tier?.toLowerCase().includes("top") || cat.floor === "Top Suite";
               const hasAvailableNow = cat.availableRoomsNow > 0;
-              const cardImage = 
-                (cat.rooms && cat.rooms.find(r => r.image || (Array.isArray(r.images) && r.images.length > 0))?.image) ||
-                (cat.rooms && cat.rooms[0]?.images?.[0]) ||
-                POLARIS_CONFIG.heroBackgroundImage;
 
               return (
                 <div
                   key={cat.id || cat.name}
-                  className={`relative rounded-2xl bg-white border flex flex-col justify-between overflow-hidden transition-all duration-300 group hover:-translate-y-1 ${
+                  className={`relative rounded-2xl bg-white border flex flex-col justify-between overflow-hidden transition-all duration-300 group hover:translate-y-[-2px] ${
                     isTop
-                      ? "border-[#8A661C]/50 shadow-md hover:shadow-xl"
-                      : "border-stone-200/90 hover:border-[#111111]/40 shadow-2xs hover:shadow-lg"
+                      ? "border-amber-300/80 shadow-[0_4px_25px_rgba(180,138,40,0.10)] hover:shadow-[0_12px_32px_rgba(180,138,40,0.16)]"
+                      : "border-stone-200/80 hover:border-[#B48A28]/40 shadow-2xs hover:shadow-md"
                   }`}
                 >
-                  {/* High-End Architectural Photo Header */}
-                  <div className="relative aspect-[16/10] w-full overflow-hidden bg-stone-100 border-b border-stone-200/80">
-                    <img
-                      src={cardImage}
-                      alt={cat.name}
-                      className="w-full h-full object-cover filter contrast-[1.04] brightness-[1.01] group-hover:scale-105 transition-transform duration-700"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/20" />
-                    
-                    {/* Top Floating Badges */}
-                    <div className="absolute top-3.5 left-3.5 right-3.5 flex items-center justify-between gap-2">
-                      <span className="px-2.5 py-1 rounded bg-[#FBFBFA]/90 backdrop-blur-md border border-[#111111]/15 text-[10px] font-mono uppercase tracking-wider font-bold text-[#111111]">
-                        {cat.tier}
-                      </span>
+                  {/* Card Header & Content */}
+                  <div className="p-5 sm:p-7 space-y-5">
+                    {/* Top Row: Tier badge & Live status */}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center space-x-2 min-w-0">
+                        <span className="font-mono text-[11px] uppercase tracking-widest text-[#B48A28] font-bold truncate">
+                          {cat.tier}
+                        </span>
+                        {cat.floors && cat.floors.length > 1 && (
+                          <span className="text-[11px] font-mono text-stone-400 font-normal">
+                            • {cat.floors.length} Levels
+                          </span>
+                        )}
+                      </div>
 
+                      {/* Live status badge */}
                       {hasAvailableNow ? (
-                        <span className="px-2.5 py-1 rounded bg-emerald-500/90 backdrop-blur-md text-white text-[10px] font-mono uppercase tracking-wider font-bold flex items-center space-x-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-white" />
+                        <span className="inline-flex items-center space-x-1.5 text-xs font-mono text-emerald-700 font-medium shrink-0">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                           <span>Available</span>
                         </span>
                       ) : (
-                        <span className="px-2.5 py-1 rounded bg-amber-500/90 backdrop-blur-md text-white text-[10px] font-mono uppercase tracking-wider font-bold flex items-center space-x-1">
-                          <Clock className="w-3 h-3 text-white" />
-                          <span>Waitlist</span>
+                        <span className="inline-flex items-center space-x-1.5 text-xs font-mono text-amber-700 font-medium shrink-0">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                          <span>Turnover</span>
                         </span>
                       )}
                     </div>
 
-                    {/* Bottom Image Overlay Title & Price */}
-                    <div className="absolute bottom-3 left-3.5 right-3.5 flex items-end justify-between text-white">
-                      <div>
-                        <h3 className="font-serif text-xl sm:text-2xl font-normal drop-shadow-sm leading-tight">
-                          {cat.name}
-                        </h3>
-                      </div>
-                      <div className="text-right">
-                        <span className="block text-[9px] font-mono uppercase tracking-widest text-amber-200 font-semibold">
-                          Starting Rate
+                    {/* Suite Category Title & Specs */}
+                    <div>
+                      <h3 className="font-display text-2xl sm:text-3xl text-stone-900 font-medium group-hover:text-[#B48A28] transition-colors leading-snug">
+                        {cat.name}
+                      </h3>
+                      <p className="text-xs sm:text-sm text-stone-500 mt-1.5 font-normal">
+                        {cat.capacity}
+                      </p>
+                      {cat.floors && cat.floors.length > 1 ? (
+                        <div className="flex items-center space-x-1.5 text-[11px] font-mono text-stone-500 mt-2.5">
+                          <Building2 className="w-3.5 h-3.5 text-[#B48A28]/80 shrink-0" />
+                          <span>Available on: {cat.floors.join(" • ")}</span>
+                        </div>
+                      ) : cat.floor ? (
+                        <p className="text-[11px] font-mono text-stone-400 mt-1">
+                          Level: {cat.floor}
+                        </p>
+                      ) : null}
+                    </div>
+
+                    {/* Nightly Allocation Price Tag */}
+                    <div className="pt-3 pb-3 border-t border-b border-stone-100 flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1.5">
+                      <span className="text-[11px] font-mono uppercase tracking-wider text-stone-400 font-medium">
+                        Nightly Rate
+                      </span>
+                      <div className="flex flex-wrap items-baseline gap-1 sm:gap-1.5">
+                        {cat.minPrice !== cat.maxPrice && (
+                          <span className="text-xs font-sans text-stone-400 font-normal">
+                            From
+                          </span>
+                        )}
+                        <span className="text-xs font-sans font-bold text-stone-700 tracking-tight">
+                          PKR
                         </span>
-                        <span className="font-mono text-base sm:text-lg font-bold text-white drop-shadow-sm">
-                          PKR {cat.minPrice.toLocaleString()}
+                        <span className="text-2xl sm:text-3xl font-sans font-bold text-stone-900 tracking-tight">
+                          {cat.minPrice.toLocaleString()}
+                        </span>
+                        <span className="text-xs font-sans text-stone-400 font-normal">
+                          / night
                         </span>
                       </div>
                     </div>
-                  </div>
 
-                  {/* Card Content & Specifications */}
-                  <div className="p-5 sm:p-6 space-y-4 flex-1 flex flex-col justify-between">
-                    
-                    {/* Architectural Specifications with Prominent Icons */}
-                    <div className="grid grid-cols-2 gap-2.5 text-xs font-mono text-stone-700 pt-1">
-                      <div className="flex items-center space-x-2 p-2 rounded-lg bg-stone-50 border border-stone-200/60">
-                        <Bed className="w-4 h-4 text-[#8A661C] shrink-0" />
-                        <span className="truncate">{cat.capacity || '1 King Bed'}</span>
-                      </div>
-                      <div className="flex items-center space-x-2 p-2 rounded-lg bg-stone-50 border border-stone-200/60">
-                        <Building2 className="w-4 h-4 text-[#8A661C] shrink-0" />
-                        <span className="truncate">
-                          {cat.floors && cat.floors.length > 1 ? `${cat.floors.length} Levels` : cat.floor || 'Level 01'}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Key Amenities Inclusions */}
-                    <div className="space-y-1.5">
-                      <div className="flex items-center space-x-1.5 text-[10.5px] font-mono uppercase tracking-wider text-stone-500 font-semibold">
-                        <Sparkles className="w-3.5 h-3.5 text-[#8A661C]" />
-                        <span>Inclusions</span>
-                      </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {cat.amenities.slice(0, 3).map((item, idx) => (
+                    {/* Key Amenities */}
+                    <div className="space-y-2">
+                      <span className="text-[11px] font-mono uppercase tracking-wider text-stone-400 font-medium block">
+                        Suite Amenities
+                      </span>
+                      <div className="flex flex-wrap gap-1.5 sm:gap-2">
+                        {cat.amenities.slice(0, 4).map((item, idx) => (
                           <span
                             key={idx}
-                            className="text-[11px] px-2.5 py-1 rounded bg-[#F7F5F0] border border-stone-200 text-stone-800 font-mono"
+                            className="text-xs px-2.5 py-1 rounded-md bg-stone-50 border border-stone-200/60 text-stone-600 font-normal"
                           >
                             {item}
                           </span>
                         ))}
-                        {cat.amenities.length > 3 && (
-                          <span className="text-[11px] px-2 py-1 rounded bg-amber-50 text-[#8A661C] border border-amber-200 font-mono font-semibold">
-                            +{cat.amenities.length - 3}
+                        {cat.amenities.length > 4 && (
+                          <span className="text-xs px-2 py-1 rounded-md bg-amber-50/80 text-amber-900 font-mono text-[11px] font-medium">
+                            +{cat.amenities.length - 4} more
                           </span>
                         )}
                       </div>
                     </div>
+                  </div>
 
-                    {/* Action Trigger Button */}
-                    <div className="pt-3 border-t border-stone-150 space-y-2">
-                      <button
-                        onClick={() => handleOpenBooking(cat)}
-                        className="w-full py-3.5 rounded-xl text-xs font-mono uppercase tracking-widest bg-[#111111] hover:bg-[#2A2A2A] active:scale-[0.99] text-[#FBFBFA] font-bold transition-all flex items-center justify-center space-x-2 shadow-2xs touch-manipulation min-h-[48px]"
-                      >
-                        <Calendar className="w-4 h-4 text-[#E0BB53]" />
-                        <span>Check Live Dates</span>
-                        <ArrowRight className="w-4 h-4 text-white/80" />
-                      </button>
-
-                      <div className="flex items-center justify-center space-x-1.5 text-[10px] font-mono text-stone-500">
-                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>Verified Direct Hotel Allocation</span>
-                      </div>
-                    </div>
-
+                  {/* Card Action Button */}
+                  <div className="p-5 sm:p-7 pt-0 space-y-2">
+                    <button
+                      onClick={() => handleOpenBooking(cat)}
+                      className="w-full py-3.5 rounded-xl text-xs sm:text-sm font-mono uppercase tracking-wider bg-stone-900 hover:bg-[#B48A28] text-white font-semibold transition-all duration-300 flex items-center justify-center space-x-2 shadow-2xs hover:shadow-md cursor-pointer"
+                    >
+                      <Calendar className="w-4 h-4 text-white/80" />
+                      <span>Select Dates & Check Availability</span>
+                      <ArrowRight className="w-4 h-4 text-white/80" />
+                    </button>
+                    <p className="text-[10px] font-mono text-stone-400 text-center tracking-wider">
+                      {cat.floors && cat.floors.length > 1
+                        ? `Available across ${cat.floors.length} hotel levels`
+                        : `Instant confirmation for ${cat.floor || "Polaris Suite"}`}
+                    </p>
                   </div>
                 </div>
               );
@@ -715,14 +739,16 @@ export default function BookingPage({
         )}
       </main>
 
-      {/* 6. RESERVATION REQUEST MODAL (With Centered Icons & Touch Perfection) */}
+      {/* =========================================================================
+          RESERVATION REQUEST MODAL (Operates on Selected Room Category)
+          ========================================================================= */}
       {isModalOpen && selectedCategory && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/60 backdrop-blur-sm animate-fadeIn"
+          className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-stone-900/60 backdrop-blur-md animate-fadeIn"
           onClick={() => setIsModalOpen(false)}
         >
           <div
-            className="relative w-full max-w-2xl bg-white border border-stone-200 rounded-2xl sm:rounded-3xl shadow-2xl text-stone-900 max-h-[92dvh] sm:max-h-[90vh] flex flex-col overflow-hidden"
+            className="relative w-full max-w-2xl bg-white border border-stone-200/90 rounded-2xl sm:rounded-3xl shadow-2xl text-stone-900 max-h-[94dvh] sm:max-h-[90vh] flex flex-col overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             {isSuccess ? (
@@ -736,95 +762,127 @@ export default function BookingPage({
                   <span className="text-xs font-mono uppercase tracking-wider text-emerald-800 font-bold">
                     REQUEST RECEIVED
                   </span>
-                  <h3 className="font-serif text-2xl sm:text-3xl text-stone-900 font-normal">
+                  <h3 className="font-display text-2xl sm:text-3xl text-stone-900 font-medium">
                     Sanctuary Allocation Requested
                   </h3>
-                  <p className="text-xs sm:text-sm text-stone-700 max-w-md mx-auto leading-relaxed pt-1">
-                    Thank you, <strong className="font-semibold text-stone-900">{guestName}</strong>. Your reservation inquiry for <strong className="font-semibold text-stone-900">{selectedCategory.name}</strong> has been transmitted.
+                  <p className="text-sm sm:text-base text-stone-700 max-w-md mx-auto leading-relaxed pt-2 font-normal">
+                    Thank you,{" "}
+                    <strong className="font-semibold text-stone-900">
+                      {guestName}
+                    </strong>
+                    . Your reservation inquiry for{" "}
+                    <strong className="font-semibold text-stone-900">
+                      {selectedCategory.name} ({selectedCategory.tier})
+                    </strong>
+                    {selectedFloorPreference ? (
+                      <span> on <strong className="font-semibold text-stone-900">{selectedFloorPreference}</strong></span>
+                    ) : ""}{" "}
+                    has been received by our private concierge.
                   </p>
                 </div>
 
-                <div className="p-4 rounded-xl bg-emerald-50/90 border border-emerald-200 text-xs sm:text-sm text-emerald-950 font-mono text-left space-y-1.5 max-w-md mx-auto">
+                <div className="p-4 sm:p-5 rounded-xl bg-emerald-50/80 border border-emerald-300 text-xs sm:text-sm text-emerald-950 font-mono text-left space-y-2 max-w-md mx-auto">
                   <div className="flex items-center space-x-2 text-[#8A661C] font-bold">
                     <MessageSquare className="w-4 h-4 text-emerald-600 shrink-0" />
-                    <span>WhatsApp Concierge Confirmation:</span>
+                    <span>WhatsApp Concierge Contact:</span>
                   </div>
-                  <p className="text-xs text-stone-700 font-sans leading-relaxed">
-                    Our guest manager will contact your WhatsApp at <strong className="font-semibold text-stone-900">{phone}</strong> to confirm your dates ({checkIn} → {checkOut}) and provide deposit instructions.
+                  <p className="text-xs sm:text-sm text-stone-700 font-sans leading-relaxed font-normal">
+                    Our guest manager will contact your WhatsApp at{" "}
+                    <strong className="font-semibold text-stone-900">
+                      {phone}
+                    </strong>{" "}
+                    to confirm your dates ({checkIn} → {checkOut}) and provide
+                    payment / deposit instructions.
                   </p>
                 </div>
 
                 <button
                   onClick={() => setIsModalOpen(false)}
-                  className="px-6 py-3 rounded-xl bg-[#111111] hover:bg-[#2A2A2A] text-[#FBFBFA] text-xs font-mono uppercase tracking-widest font-semibold transition-all shadow-xs touch-manipulation min-h-[44px]"
+                  className="px-6 py-3 rounded-xl bg-[#B48A28] hover:bg-[#9E7719] text-white text-xs sm:text-sm font-mono uppercase tracking-wider font-bold transition-all shadow-xs touch-manipulation min-h-[44px]"
                 >
-                  Return to Suite Tiers
+                  Return to Room Types
                 </button>
               </div>
             ) : (
-              // BOOKING FORM CONTAINER WITH FIXED HEADER, SCROLLABLE BODY, AND DOCKED FOOTER
+              // BOOKING FORM CONTAINER WITH STICKY HEADER, SCROLLABLE BODY, AND DOCKED FOOTER
               <>
-                {/* MODAL HEADER */}
-                <div className="shrink-0 p-4 sm:p-6 pb-3 border-b border-stone-200 bg-white relative flex items-start justify-between gap-3">
+                {/* 1. STICKY MODAL HEADER */}
+                <div className="shrink-0 p-4 sm:p-6 pb-3 sm:pb-4 border-b border-stone-200 bg-white relative flex items-start justify-between gap-3">
                   <div className="space-y-1 min-w-0 pr-2">
-                    <div className="flex items-center space-x-2 font-mono text-xs">
-                      <span className="px-2.5 py-0.5 rounded bg-[#111111] text-[#FBFBFA] font-bold text-[10px] sm:text-[11px] uppercase tracking-wider">
+                    <div className="flex items-center space-x-2 font-mono text-xs sm:text-sm">
+                      <span className="px-2.5 py-0.5 sm:py-1 rounded bg-[#B48A28] text-white font-bold text-[11px] sm:text-xs">
                         {selectedCategory.tier}
                       </span>
-                      <span className="text-stone-500 font-semibold text-[11px] truncate">
+                      <span className="text-stone-600 font-semibold text-[11px] sm:text-xs truncate">
                         {selectedCategory.floors && selectedCategory.floors.length > 1
                           ? `${selectedCategory.floors.length} Levels Available`
-                          : selectedCategory.floor || "Polaris Suite"}
+                          : selectedCategory.floor
+                          ? `Level: ${selectedCategory.floor}`
+                          : "Polaris Suite"}
                       </span>
                     </div>
-
-                    <h3 className="font-serif text-xl sm:text-2xl md:text-3xl text-stone-900 font-normal pt-0.5 truncate">
+                    <h3 className="font-display text-xl sm:text-2xl md:text-3xl text-stone-900 font-medium pt-0.5 truncate">
                       {selectedCategory.name}
                     </h3>
-
-                    <div className="flex flex-wrap items-baseline gap-1.5 pt-0.5 font-mono text-xs">
-                      <span className="text-stone-500">Nightly:</span>
-                      <span className="text-base sm:text-lg font-bold text-[#8A661C]">
-                        PKR {currentNightlyPrice.toLocaleString()}
+                    <div className="flex flex-wrap items-baseline gap-1.5 sm:gap-2 pt-1">
+                      <span className="text-xs font-sans font-bold text-stone-700">PKR</span>
+                      <span className="text-xl sm:text-2xl md:text-3xl font-sans font-bold text-[#8A661C] tracking-tight transition-all">
+                        {currentNightlyPrice.toLocaleString()}
                       </span>
+                      <span className="text-xs font-sans text-stone-500 font-normal">/ night</span>
+
+                      {/* Dynamic Price Difference Badge */}
                       {selectedCategory.minPrice !== selectedCategory.maxPrice && (
                         currentNightlyPrice > selectedCategory.minPrice ? (
-                          <span className="px-2 py-0.5 rounded text-[10px] bg-amber-100 text-amber-900 border border-amber-300 font-bold">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-mono font-bold bg-amber-100 text-amber-900 border border-amber-300 animate-fadeIn">
                             +PKR {(currentNightlyPrice - selectedCategory.minPrice).toLocaleString()} higher level
                           </span>
                         ) : (
-                          <span className="px-2 py-0.5 rounded text-[10px] bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-mono font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 animate-fadeIn">
                             Best value rate
                           </span>
                         )
                       )}
+
+                      <span className="text-stone-300 mx-1 hidden sm:inline">•</span>
+                      <span className="text-xs font-sans text-stone-600 font-normal hidden sm:inline">
+                        {currentAssignedRoom?.capacity || selectedCategory.capacity}
+                      </span>
+
+                      {currentAssignedRoom?.floor && (
+                        <>
+                          <span className="text-stone-300 mx-1 hidden sm:inline">•</span>
+                          <span className="text-xs font-mono text-stone-700 bg-stone-100 px-2 py-0.5 rounded border border-stone-200 hidden sm:inline">
+                            {currentAssignedRoom.floor}
+                          </span>
+                        </>
+                      )}
                     </div>
                   </div>
 
-                  {/* 44px Accessible Close Button */}
+                  {/* Accessible Close Button (Minimum 44px tap target) */}
                   <button
                     onClick={() => setIsModalOpen(false)}
-                    className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-600 flex items-center justify-center transition-colors shrink-0 touch-manipulation min-w-[40px]"
+                    className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-stone-100 hover:bg-stone-200 active:bg-stone-300 text-stone-600 flex items-center justify-center transition-colors shrink-0 touch-manipulation"
                     aria-label="Close modal"
                   >
-                    <X className="w-5 h-5 text-stone-800" />
+                    <X className="w-5 h-5 sm:w-6 sm:h-6" />
                   </button>
                 </div>
 
-                {/* MODAL FORM BODY */}
+                {/* 2. FORM: BODY (SCROLLABLE) & FOOTER (DOCKED) */}
                 <form
                   onSubmit={handleSubmitRequest}
                   className="flex flex-col flex-1 min-h-0 overflow-hidden"
                 >
                   <div className="flex-1 overflow-y-auto overscroll-contain p-4 sm:p-6 md:p-8 space-y-4 sm:space-y-5">
-                    
-                    {/* Full Name Input (Vertically centered icon) */}
+                    {/* Guest Name */}
                     <div>
-                      <label className="block text-xs font-mono uppercase tracking-wider text-stone-800 mb-1.5 font-bold">
+                      <label className="block text-xs sm:text-sm font-mono uppercase tracking-wider text-stone-800 mb-1.5 font-bold">
                         Full Name *
                       </label>
-                      <div className="relative flex items-center">
-                        <User className="w-4 h-4 text-[#8A661C] absolute left-3.5 pointer-events-none shrink-0" />
+                      <div className="relative">
+                        <User className="absolute left-3.5 top-3.5 w-4 h-4 text-stone-500" />
                         <input
                           type="text"
                           required
@@ -832,19 +890,19 @@ export default function BookingPage({
                           value={guestName}
                           onChange={(e) => setGuestName(e.target.value)}
                           placeholder="e.g. Tariq Aziz"
-                          className="w-full bg-stone-50 border border-stone-300 rounded-xl pl-11 pr-4 py-3 text-sm text-stone-900 placeholder-stone-400 focus:outline-none focus:border-[#8A661C] focus:bg-white focus:ring-1 focus:ring-[#8A661C] transition-colors"
+                          className="w-full bg-stone-50 border border-stone-300 rounded-xl pl-11 pr-4 py-3 text-base sm:text-sm text-stone-900 placeholder-stone-500 focus:outline-none focus:border-amber-600 focus:bg-white focus:ring-1 focus:ring-amber-500 transition-colors"
                         />
                       </div>
                     </div>
 
-                    {/* WhatsApp & Email (Vertically centered icons) */}
+                    {/* WhatsApp & Email */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-xs font-mono uppercase tracking-wider text-stone-800 mb-1.5 font-bold">
-                          WhatsApp / Phone *
+                        <label className="block text-xs sm:text-sm font-mono uppercase tracking-wider text-stone-800 mb-1.5 font-bold">
+                          WhatsApp / Phone Number *
                         </label>
-                        <div className="relative flex items-center">
-                          <Phone className="w-4 h-4 text-[#8A661C] absolute left-3.5 pointer-events-none shrink-0" />
+                        <div className="relative">
+                          <Phone className="absolute left-3.5 top-3.5 w-4 h-4 text-stone-500" />
                           <input
                             type="tel"
                             inputMode="tel"
@@ -853,17 +911,17 @@ export default function BookingPage({
                             value={phone}
                             onChange={(e) => setPhone(e.target.value)}
                             placeholder="+92 300 1234567"
-                            className="w-full bg-stone-50 border border-stone-300 rounded-xl pl-11 pr-4 py-3 text-sm text-stone-900 placeholder-stone-400 focus:outline-none focus:border-[#8A661C] focus:bg-white focus:ring-1 focus:ring-[#8A661C] transition-colors font-mono"
+                            className="w-full bg-stone-50 border border-stone-300 rounded-xl pl-11 pr-4 py-3 text-base sm:text-sm text-stone-900 placeholder-stone-500 focus:outline-none focus:border-amber-600 focus:bg-white focus:ring-1 focus:ring-amber-500 transition-colors font-mono"
                           />
                         </div>
                       </div>
 
                       <div>
-                        <label className="block text-xs font-mono uppercase tracking-wider text-stone-800 mb-1.5 font-bold">
+                        <label className="block text-xs sm:text-sm font-mono uppercase tracking-wider text-stone-800 mb-1.5 font-bold">
                           Email Address *
                         </label>
-                        <div className="relative flex items-center">
-                          <Mail className="w-4 h-4 text-[#8A661C] absolute left-3.5 pointer-events-none shrink-0" />
+                        <div className="relative">
+                          <Mail className="absolute left-3.5 top-3.5 w-4 h-4 text-stone-500" />
                           <input
                             type="email"
                             inputMode="email"
@@ -872,236 +930,306 @@ export default function BookingPage({
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
                             placeholder="tariq@example.com"
-                            className="w-full bg-stone-50 border border-stone-300 rounded-xl pl-11 pr-4 py-3 text-sm text-stone-900 placeholder-stone-400 focus:outline-none focus:border-[#8A661C] focus:bg-white focus:ring-1 focus:ring-[#8A661C] transition-colors"
+                            className="w-full bg-stone-50 border border-stone-300 rounded-xl pl-11 pr-4 py-3 text-base sm:text-sm text-stone-900 placeholder-stone-500 focus:outline-none focus:border-amber-600 focus:bg-white focus:ring-1 focus:ring-amber-500 transition-colors"
                           />
                         </div>
                       </div>
                     </div>
 
-                    {/* Mobile-Friendly Live Polaris Calendar */}
-                    <div className="pt-1 space-y-2">
+                  {/* Luxury Polaris Calendar Date Picker & Real-Time Category Availability */}
+                  <div className="pt-1 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs sm:text-sm font-mono uppercase tracking-wider text-stone-800 font-bold">
+                        Stay Dates (Check-In & Check-Out) *
+                      </label>
+                      {checkIn && checkOut && (
+                        <span className="text-xs font-mono font-semibold text-stone-500">
+                          {checkIn} → {checkOut}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Real-Time Live Occupancy Feedback */}
+                    {checkIn && checkOut && (
+                      availableRoomsForRange.length > 0 ? (
+                        <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-300 text-xs sm:text-sm text-emerald-950 flex items-center justify-between font-mono animate-fadeIn">
+                          <span className="flex items-center space-x-1.5 font-bold">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                            <span>
+                              {selectedCategory.floors && selectedCategory.floors.length > 1
+                                ? `Suites available across ${selectedCategory.floors.length} levels for your stay`
+                                : "Suite available for your selected stay"}
+                            </span>
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-300 text-xs sm:text-sm text-rose-950 space-y-1 animate-fadeIn">
+                          <div className="flex items-center space-x-1.5 font-bold text-rose-800">
+                            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                            <span>
+                              All Suites in "{selectedCategory.name}" are Booked for Selected Dates
+                            </span>
+                          </div>
+                          <p className="text-xs text-stone-600 font-normal">
+                            No suites are available for the entire stay from {checkIn} to {checkOut}.
+                            Please pick alternative dates on the calendar or explore other room categories.
+                          </p>
+                        </div>
+                      )
+                    )}
+
+                    <PolarisCalendar
+                      checkIn={checkIn}
+                      checkOut={checkOut}
+                      onChange={({ checkIn: cIn, checkOut: cOut }) => {
+                        setCheckIn(cIn);
+                        setCheckOut(cOut);
+                      }}
+                      bookedDates={activeBookedDates}
+                      pricePKR={currentNightlyPrice}
+                      roomName={currentAssignedRoom?.name || selectedCategory.name}
+                    />
+                  </div>
+
+                  {/* Preferred Floor / Level Selection (When Category Spans Multiple Floors) */}
+                  {selectedCategory.floors && selectedCategory.floors.length > 1 && (
+                    <div className="pt-2 space-y-2.5">
                       <div className="flex items-center justify-between">
-                        <label className="block text-xs font-mono uppercase tracking-wider text-stone-800 font-bold">
-                          Stay Dates (Check-In & Check-Out) *
+                        <label className="block text-xs sm:text-sm font-mono uppercase tracking-wider text-stone-800 font-bold flex items-center space-x-2">
+                          <Building2 className="w-4 h-4 text-[#B48A28]" />
+                          <span>Select Floor Preference</span>
                         </label>
-                        {checkIn && checkOut && (
-                          <span className="text-xs font-mono font-semibold text-stone-500">
-                            {checkIn} → {checkOut}
+                        {selectedCategory.minPrice !== selectedCategory.maxPrice && (
+                          <span className="text-[11px] font-mono text-[#8A661C] font-medium bg-amber-50/80 border border-amber-200/80 px-2.5 py-0.5 rounded-full">
+                            Rates vary by level
                           </span>
                         )}
                       </div>
 
-                      <PolarisCalendar
-                        checkIn={checkIn}
-                        checkOut={checkOut}
-                        onChange={({ checkIn: cIn, checkOut: cOut }) => {
-                          setCheckIn(cIn);
-                          setCheckOut(cOut);
-                        }}
-                        bookedDates={activeBookedDates}
-                        pricePKR={currentNightlyPrice}
-                        roomName={currentAssignedRoom?.name || selectedCategory.name}
-                      />
-                    </div>
-
-                    {/* Floor Level Preference (When Category Spans Multiple Floors) */}
-                    {selectedCategory.floors && selectedCategory.floors.length > 1 && (
-                      <div className="pt-2 space-y-2.5">
-                        <div className="flex items-center justify-between">
-                          <label className="block text-xs font-mono uppercase tracking-wider text-stone-800 font-bold flex items-center space-x-1.5">
-                            <Building2 className="w-4 h-4 text-[#8A661C]" />
-                            <span>Select Floor Preference</span>
-                          </label>
-                          {selectedCategory.minPrice !== selectedCategory.maxPrice && (
-                            <span className="text-[10.5px] font-mono text-[#8A661C] font-semibold bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-                              Rates vary by level
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="space-y-2 w-full flex flex-col">
-                          {/* Option 1: Best Preference */}
-                          <button
-                            type="button"
-                            onClick={() => setSelectedFloorPreference('')}
-                            className={`w-full px-4 py-3 rounded-xl border text-left transition-all flex items-center justify-between gap-3 touch-manipulation min-h-[50px] ${
-                              !selectedFloorPreference
-                                ? 'bg-[#111111] text-[#FBFBFA] border-[#111111] shadow-xs'
-                                : 'bg-white hover:bg-stone-50 text-stone-800 border-stone-200 shadow-2xs'
-                            }`}
-                          >
-                            <div className="flex items-center space-x-2.5 min-w-0">
-                              <div className={`w-2 h-2 rounded-full shrink-0 ${!selectedFloorPreference ? 'bg-[#E0BB53]' : 'bg-stone-300'}`} />
-                              <div className="min-w-0">
-                                <span className="font-serif text-sm font-medium block truncate">
-                                  Best Available Preference
-                                </span>
-                                <span className={`text-[10.5px] font-mono block truncate ${!selectedFloorPreference ? 'text-stone-300' : 'text-stone-500'}`}>
-                                  {!selectedFloorPreference && currentAssignedRoom?.floor
-                                    ? `Allocated on ${currentAssignedRoom.floor}`
-                                    : 'System allocates best available suite'}
-                                </span>
-                              </div>
-                            </div>
-
-                            <div className="flex items-baseline space-x-1 font-mono text-right shrink-0">
-                              <span className="text-[10px] text-stone-400">PKR</span>
-                              <span className={`text-sm sm:text-base font-bold ${!selectedFloorPreference ? 'text-[#E0BB53]' : 'text-stone-900'}`}>
-                                {(!selectedFloorPreference ? currentNightlyPrice : selectedCategory.minPrice).toLocaleString()}
+                      <div className="space-y-2 w-full flex flex-col pt-0.5">
+                        {/* Option 1: Best Available / System Allocation */}
+                        <button
+                          type="button"
+                          onClick={() => setSelectedFloorPreference('')}
+                          className={`w-full px-4 sm:px-5 py-3 sm:py-3.5 rounded-xl border text-left transition-all duration-200 cursor-pointer flex items-center justify-between gap-3 sm:gap-4 touch-manipulation min-h-[52px] ${
+                            !selectedFloorPreference
+                              ? 'bg-stone-900 text-white border-stone-900 shadow-sm ring-1 ring-amber-400/50'
+                              : 'bg-white hover:bg-stone-50 text-stone-800 border-stone-200 shadow-2xs'
+                          }`}
+                        >
+                          {/* Floor listed on the left */}
+                          <div className="flex items-center space-x-2.5 sm:space-x-3 min-w-0">
+                            <div className={`w-2 h-2 rounded-full shrink-0 ${
+                              !selectedFloorPreference ? 'bg-amber-400' : 'bg-stone-300'
+                            }`} />
+                            <div className="min-w-0">
+                              <span className={`font-display text-xs sm:text-base font-medium tracking-wide block truncate ${
+                                !selectedFloorPreference ? 'text-white' : 'text-stone-900'
+                              }`}>
+                                Best Preference
                               </span>
-                              <span className="text-[10px] text-stone-400">/n</span>
+                              <span className={`text-[10.5px] sm:text-[11px] font-mono block truncate ${
+                                !selectedFloorPreference ? 'text-stone-300' : 'text-stone-500'
+                              }`}>
+                                {!selectedFloorPreference && currentAssignedRoom?.floor
+                                  ? `Allocated on ${currentAssignedRoom.floor}`
+                                  : 'System allocates best available suite'}
+                              </span>
                             </div>
-                          </button>
+                          </div>
 
-                          {/* Specific Floor Options */}
-                          {floorOrRoomOptions.map((opt) => {
-                            const isSelected = selectedFloorPreference === opt.name || selectedFloorPreference === opt.id;
-                            const availableCount = availableRoomsForRange.filter(
-                              (r) => (r.floor || '').trim().toLowerCase() === opt.name.trim().toLowerCase()
-                            ).length;
-                            const isSoldOut = Boolean(checkIn && checkOut && availableCount === 0);
-
-                            return (
-                              <button
-                                key={opt.id}
-                                type="button"
-                                disabled={isSoldOut}
-                                onClick={() => setSelectedFloorPreference(opt.name)}
-                                className={`w-full px-4 py-3 rounded-xl border text-left transition-all flex items-center justify-between gap-3 touch-manipulation min-h-[50px] ${
-                                  isSelected
-                                    ? 'bg-[#111111] text-[#FBFBFA] border-[#111111] shadow-xs'
-                                    : isSoldOut
-                                    ? 'bg-stone-50 text-stone-400 border-stone-200 cursor-not-allowed opacity-50'
-                                    : 'bg-white hover:bg-stone-50 text-stone-800 border-stone-200 shadow-2xs'
-                                }`}
-                              >
-                                <div className="flex items-center space-x-2.5 min-w-0">
-                                  <div className={`w-2 h-2 rounded-full shrink-0 ${isSelected ? 'bg-[#E0BB53]' : isSoldOut ? 'bg-stone-200' : 'bg-stone-300'}`} />
-                                  <span className={`font-serif text-sm font-medium truncate ${isSelected ? 'text-white' : isSoldOut ? 'line-through text-stone-400' : 'text-stone-900'}`}>
-                                    {opt.name}
-                                  </span>
-                                </div>
-
-                                <div className="flex items-baseline space-x-1 font-mono text-right shrink-0">
-                                  <span className="text-[10px] text-stone-400">PKR</span>
-                                  <span className={`text-sm sm:text-base font-bold ${isSelected ? 'text-[#E0BB53]' : isSoldOut ? 'text-stone-400' : 'text-stone-900'}`}>
-                                    {opt.pricePKR.toLocaleString()}
-                                  </span>
-                                  <span className="text-[10px] text-stone-400">/n</span>
-                                </div>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Number of Guests (With Users icon) */}
-                    <div>
-                      <label className="block text-xs font-mono uppercase tracking-wider text-stone-800 mb-1.5 font-bold">
-                        Number of Guests
-                      </label>
-                      <div className="relative flex items-center">
-                        <Users className="w-4 h-4 text-[#8A661C] absolute left-3.5 pointer-events-none shrink-0" />
-                        <input
-                          type="text"
-                          value={guests}
-                          onChange={(e) => setGuests(e.target.value)}
-                          placeholder="e.g. 2 Adults, 1 Child"
-                          className="w-full bg-stone-50 border border-stone-300 rounded-xl pl-11 pr-4 py-3 text-sm text-stone-900 placeholder-stone-400 focus:outline-none focus:border-[#8A661C] focus:bg-white focus:ring-1 focus:ring-[#8A661C] transition-colors"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Special Requests (With MessageSquare icon) */}
-                    <div>
-                      <label className="block text-xs font-mono uppercase tracking-wider text-stone-800 mb-1.5 font-bold">
-                        Special Requests / Airport Transfer (Optional)
-                      </label>
-                      <div className="relative">
-                        <MessageSquare className="w-4 h-4 text-[#8A661C] absolute left-3.5 top-3.5 pointer-events-none shrink-0" />
-                        <textarea
-                          rows={2}
-                          value={notes}
-                          onChange={(e) => setNotes(e.target.value)}
-                          placeholder="e.g. Swat valley transfer, late evening check-in, dietary preferences."
-                          className="w-full bg-stone-50 border border-stone-300 rounded-xl pl-11 pr-4 py-3 text-sm text-stone-900 placeholder-stone-400 focus:outline-none focus:border-[#8A661C] focus:bg-white focus:ring-1 focus:ring-[#8A661C] transition-colors resize-none"
-                        />
-                      </div>
-                    </div>
-
-                  </div>
-
-                  {/* DOCKED FOOTER: ESTIMATE & SUBMIT (Touch friendly) */}
-                  <div className="shrink-0 border-t border-stone-200 bg-[#FBFBFA] p-4 sm:p-5 shadow-[0_-4px_16px_rgba(0,0,0,0.04)] space-y-3">
-                    {currentAssignedRoom && (
-                      <div className="flex items-center justify-between gap-2 text-xs font-mono">
-                        <div className="min-w-0">
-                          <span className="text-stone-400 text-[10px] uppercase tracking-wider block font-semibold truncate">
-                            SUITE ALLOCATION:
-                          </span>
-                          <span className="font-bold text-stone-900 text-xs sm:text-sm truncate block">
-                            {selectedCategory.name} • {currentAssignedRoom.floor || "Standard Level"}
-                          </span>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <span className="text-stone-400 text-[10px] uppercase tracking-wider block font-semibold">
-                            {checkIn && checkOut && nightsCount > 0
-                              ? `ESTIMATED TOTAL (${nightsCount}N):`
-                              : 'NIGHTLY RATE:'}
-                          </span>
-                          <div className="flex items-baseline justify-end space-x-1">
-                            <span className="text-[10px] font-bold text-stone-500">PKR</span>
-                            <span className="text-base sm:text-lg font-bold text-[#8A661C]">
-                              {checkIn && checkOut && nightsCount > 0
-                                ? (currentNightlyPrice * nightsCount).toLocaleString()
-                                : currentNightlyPrice.toLocaleString()}
+                          {/* Price listed on the far right */}
+                          <div className="flex items-baseline space-x-1 sm:space-x-1.5 shrink-0 font-mono text-right pl-2">
+                            <span className={`text-[10px] sm:text-[11px] font-semibold ${!selectedFloorPreference ? 'text-stone-400' : 'text-stone-400'}`}>
+                              PKR
+                            </span>
+                            <span className={`text-sm sm:text-lg font-bold ${
+                              !selectedFloorPreference ? 'text-amber-400' : 'text-stone-900'
+                            }`}>
+                              {(!selectedFloorPreference
+                                ? currentNightlyPrice
+                                : selectedCategory.minPrice
+                              ).toLocaleString()}
+                            </span>
+                            <span className={`text-[11px] sm:text-xs ${!selectedFloorPreference ? 'text-stone-400' : 'text-stone-500'}`}>
+                              / night
                             </span>
                           </div>
-                        </div>
+                        </button>
+
+                        {/* Option 2..N: Specific Floors of rooms available in category */}
+                        {floorOrRoomOptions.map((opt) => {
+                          const isSelected = selectedFloorPreference === opt.name || selectedFloorPreference === opt.id;
+                          const availableCount = availableRoomsForRange.filter(
+                            (r) => (r.floor || '').trim().toLowerCase() === opt.name.trim().toLowerCase()
+                          ).length;
+                          const isSoldOut = Boolean(checkIn && checkOut && availableCount === 0);
+
+                          return (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              disabled={isSoldOut}
+                              onClick={() => setSelectedFloorPreference(opt.name)}
+                              className={`w-full px-4 sm:px-5 py-3 sm:py-3.5 rounded-xl border text-left transition-all duration-200 flex items-center justify-between gap-3 sm:gap-4 touch-manipulation min-h-[52px] ${
+                                isSelected
+                                  ? 'bg-stone-900 text-white border-stone-900 shadow-sm ring-1 ring-amber-400/50 cursor-pointer'
+                                  : isSoldOut
+                                  ? 'bg-stone-50/60 text-stone-400 border-stone-200 cursor-not-allowed opacity-60'
+                                  : 'bg-white hover:bg-stone-50 text-stone-800 border-stone-200 shadow-2xs cursor-pointer'
+                              }`}
+                            >
+                              {/* Floor listed on the left */}
+                              <div className="flex items-center space-x-2.5 sm:space-x-3 min-w-0">
+                                <div className={`w-2 h-2 rounded-full shrink-0 ${
+                                  isSelected
+                                    ? 'bg-amber-400'
+                                    : isSoldOut
+                                    ? 'bg-stone-200'
+                                    : 'bg-stone-300'
+                                }`} />
+                                <div className="flex items-center space-x-2 min-w-0">
+                                  <span className={`font-display text-xs sm:text-base font-medium tracking-wide truncate ${
+                                    isSelected ? 'text-white' : isSoldOut ? 'text-stone-400 line-through' : 'text-stone-900'
+                                  }`}>
+                                    {opt.name}
+                                  </span>
+                                  {isSoldOut && (
+                                    <span className="text-[9.5px] sm:text-[10px] font-mono uppercase tracking-wider text-rose-600 bg-rose-50 px-1.5 sm:px-2 py-0.5 rounded border border-rose-200 shrink-0">
+                                      Sold
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Price listed on the far right */}
+                              <div className="flex items-baseline space-x-1 sm:space-x-1.5 shrink-0 font-mono text-right pl-2">
+                                <span className={`text-[10px] sm:text-[11px] font-semibold ${isSelected ? 'text-stone-400' : 'text-stone-400'}`}>
+                                  PKR
+                                </span>
+                                <span className={`text-sm sm:text-lg font-bold ${
+                                  isSelected ? 'text-amber-400' : isSoldOut ? 'text-stone-400' : 'text-stone-900'
+                                }`}>
+                                  {opt.pricePKR.toLocaleString()}
+                                </span>
+                                <span className={`text-[11px] sm:text-xs ${isSelected ? 'text-stone-400' : 'text-stone-500'}`}>
+                                  / night
+                                </span>
+                              </div>
+                            </button>
+                          );
+                        })}
                       </div>
-                    )}
+                    </div>
+                  )}
 
-                    <button
-                      type="submit"
-                      disabled={
-                        isSubmitting ||
-                        Boolean(checkIn && checkOut && availableRoomsForRange.length === 0)
-                      }
-                      className={`w-full py-3.5 sm:py-4 rounded-xl text-xs font-mono uppercase tracking-widest font-bold transition-all flex items-center justify-center space-x-2 shadow-sm touch-manipulation min-h-[48px] ${
-                        checkIn && checkOut && availableRoomsForRange.length === 0
-                          ? "bg-stone-300 text-stone-500 cursor-not-allowed"
-                          : "bg-[#111111] hover:bg-[#2A2A2A] active:scale-[0.99] text-[#FBFBFA] hover:shadow-md cursor-pointer"
-                      }`}
-                    >
-                      <Send className="w-4 h-4 text-[#E0BB53] shrink-0" />
-                      <span className="truncate">
-                        {isSubmitting
-                          ? "Transmitting Request..."
-                          : checkIn && checkOut && availableRoomsForRange.length === 0
-                          ? "Sold Out for Selected Dates"
-                          : "Submit Direct Reservation Request"}
-                      </span>
-                    </button>
-
-                    <p className="text-[10.5px] sm:text-xs text-stone-500 font-mono text-center">
-                      Our front-desk concierge will contact your WhatsApp to confirm dates & deposit.
-                    </p>
+                  {/* Number of Guests */}
+                  <div>
+                    <label className="block text-xs sm:text-sm font-mono uppercase tracking-wider text-stone-800 mb-1.5 font-bold">
+                      Number of Guests
+                    </label>
+                    <input
+                      type="text"
+                      value={guests}
+                      onChange={(e) => setGuests(e.target.value)}
+                      placeholder="e.g. 2 Adults, 1 Child"
+                      className="w-full bg-stone-50 border border-stone-300 rounded-xl px-4 py-3 text-base sm:text-sm text-stone-900 placeholder-stone-500 focus:outline-none focus:border-amber-600 focus:bg-white focus:ring-1 focus:ring-amber-500 transition-colors"
+                    />
                   </div>
 
-                </form>
-              </>
-            )}
-          </div>
+                  {/* Special Requests / Notes */}
+                  <div>
+                    <label className="block text-xs sm:text-sm font-mono uppercase tracking-wider text-stone-800 mb-1.5 font-bold">
+                      Special Requests / Private Transfer Needs (Optional)
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      placeholder="e.g. Honeymoon setup, Swat airport transfer, late evening arrival."
+                      className="w-full bg-stone-50 border border-stone-300 rounded-xl p-3.5 text-base sm:text-sm text-stone-900 placeholder-stone-500 focus:outline-none focus:border-amber-600 focus:bg-white focus:ring-1 focus:ring-amber-500 transition-colors resize-none"
+                    />
+                  </div>
+                </div>
+
+                {/* 3. DOCKED FOOTER: TOTAL ESTIMATE & SUBMIT BUTTON */}
+                <div className="shrink-0 border-t border-stone-200 bg-[#FAF9F5]/98 backdrop-blur-md p-3.5 sm:p-5 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] space-y-2.5">
+                  {currentAssignedRoom && (
+                    <div className="flex items-center justify-between gap-2 text-xs font-mono">
+                      <div className="min-w-0">
+                        <span className="text-stone-500 text-[10px] sm:text-[10.5px] uppercase tracking-wider block font-semibold truncate">
+                          ALLOCATED SUITE & LEVEL:
+                        </span>
+                        <span className="font-bold text-stone-900 text-xs sm:text-sm truncate block">
+                          {selectedCategory.name} • {currentAssignedRoom.floor || "Standard Level"}
+                          {isAdmin && ` (Suite #${currentAssignedRoom.roomNumber})`}
+                        </span>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <span className="text-stone-500 text-[10px] sm:text-[10.5px] uppercase tracking-wider block font-semibold">
+                          {checkIn && checkOut && nightsCount > 0
+                            ? `TOTAL (${nightsCount} ${nightsCount === 1 ? 'NIGHT' : 'NIGHTS'}):`
+                            : 'NIGHTLY RATE:'}
+                        </span>
+                        <div className="flex items-baseline justify-end space-x-1">
+                          <span className="text-[10px] font-bold text-stone-500">PKR</span>
+                          <span className="text-base sm:text-lg font-bold text-[#8A661C]">
+                            {checkIn && checkOut && nightsCount > 0
+                              ? (currentNightlyPrice * nightsCount).toLocaleString()
+                              : currentNightlyPrice.toLocaleString()}
+                          </span>
+                          {(!checkIn || !checkOut || nightsCount === 0) && (
+                            <span className="text-[10px] text-stone-500">/ night</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={
+                      isSubmitting ||
+                      Boolean(checkIn && checkOut && availableRoomsForRange.length === 0)
+                    }
+                    className={`w-full py-3.5 sm:py-4 rounded-xl text-xs sm:text-sm font-mono uppercase tracking-wider font-bold transition-all flex items-center justify-center space-x-2 shadow-sm touch-manipulation min-h-[48px] ${
+                      checkIn && checkOut && availableRoomsForRange.length === 0
+                        ? "bg-stone-300 text-stone-500 cursor-not-allowed"
+                        : "bg-[#B48A28] hover:bg-[#9E7719] active:scale-[0.99] text-white hover:shadow-md cursor-pointer"
+                    }`}
+                  >
+                    <Send className="w-4 h-4 shrink-0" />
+                    <span className="truncate">
+                      {isSubmitting
+                        ? "Transmitting Request..."
+                        : checkIn && checkOut && availableRoomsForRange.length === 0
+                        ? "Sold Out for Selected Dates"
+                        : "Submit Reservation Request"}
+                    </span>
+                  </button>
+                  <p className="text-[11px] sm:text-xs text-stone-600 font-medium font-mono text-center">
+                    Our front-desk team will contact your WhatsApp to confirm availability & deposit.
+                  </p>
+                </div>
+              </form>
+            </>
+          )}
         </div>
-      )}
+      </div>
+    )}
 
-      {/* 7. MINIMAL FOOTER */}
-      <footer className="border-t border-[#111111]/10 bg-[#F7F5F0] py-6 px-4 sm:px-6 text-center text-xs text-stone-600 font-mono">
-        <p>© {new Date().getFullYear()} POLARIS Hotel & Sanctuary • Kalam Valley, Swat, Pakistan</p>
-        <p className="text-[10.5px] text-stone-500 mt-1">Direct Reservations Portal • polarishotels.pk/booking</p>
+      {/* =========================================================================
+          MINIMAL FOOTER
+          ========================================================================= */}
+      <footer className="border-t border-stone-200 bg-[#F5F2EB] py-5 sm:py-8 px-4 sm:px-6 text-center text-xs sm:text-sm text-stone-700 font-mono">
+        <p>
+          © {new Date().getFullYear()} POLARIS Hotel & Sanctuary • Kalam Valley,
+          Swat, Pakistan
+        </p>
+        <p className="text-[11px] sm:text-xs text-stone-600 mt-1 font-medium">
+          Direct Reservations Portal • polarishotels.pk/booking
+        </p>
       </footer>
-
     </div>
   );
 }

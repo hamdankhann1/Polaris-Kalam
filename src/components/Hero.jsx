@@ -1,184 +1,261 @@
-import React from 'react';
+import React, { useState } from "react";
 import {
-  ArrowRight,
-  ArrowUpRight,
-  Bed,
-  Calendar,
-  Compass,
   Sparkles,
   MapPin,
-  ShieldCheck,
-  ChevronRight
-} from 'lucide-react';
-import { POLARIS_CONFIG } from '../polarisConfig';
+  ArrowDown,
+  ArrowUpRight,
+  CheckCircle2,
+  Loader2,
+} from "lucide-react";
+import { POLARIS_CONFIG } from "../polarisConfig";
+import { subscribeToWaitlist } from "../services/newsletterService";
+import CountdownTimer from "./CountdownTimer";
 
 /**
  * =========================================================================
- * Hero Component — Swiss Architectural Hero (Inspired by 3d-discovery.fr)
+ * Hero Component
  * =========================================================================
- * 
- * Swiss hairline modular tiles, monumental editorial typography,
- * corner crosshairs, micro-labels, and direct diagonal arrow actions.
+ *
+ * The main focal section of the landing page.
+ * Highlights:
+ * - Architectural geographic coordinates (Kalam Valley, Swat)
+ * - Monumental brand typography for POLARIS
+ * - Clear "Opening Soon" positioning
+ * - Launch Countdown Timer
+ * - Automated email waitlist integration (Brevo / Mailchimp)
  */
 export default function Hero({ onOpenInquiry, onOpenBooking }) {
-  const scrollToSuites = () => {
-    const el = document.getElementById('suites-spatial-index');
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth' });
-    }
+  const [emailInput, setEmailInput] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSubmitted, setIsSubmitted] = useState(false);
+
+  const handleQuickSignup = async (e) => {
+    e.preventDefault();
+    if (!emailInput || isLoading) return;
+
+    setIsLoading(true);
+
+    // Dispatches to Brevo / Mailchimp / LocalStorage via newsletterService
+    await subscribeToWaitlist({
+      email: emailInput,
+      interest: "Soft Launch December 1st - Priority Access",
+    });
+
+    setIsLoading(false);
+    setIsSubmitted(true);
+    setEmailInput("");
   };
 
   return (
-    <section className="relative w-full pt-24 sm:pt-28 pb-12 sm:pb-20 px-4 sm:px-6 lg:px-10 overflow-hidden bg-[#FBFBFA]">
-      <div className="max-w-7xl mx-auto space-y-6 sm:space-y-8">
-        
-        {/* 1. SWISS MODULAR TOP TILES ROW (Inspired by 3d-discovery.fr sg-tile header row) */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3 text-left">
-          <div className="sg-tile p-3 sm:p-4 rounded-xl flex items-center justify-between sg-crosshair">
-            <p className="sg-label">Polaris Kalam · ©2026</p>
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-          </div>
+    <section className="relative min-h-screen w-full max-w-full overflow-x-hidden flex flex-col items-center justify-center pt-24 sm:pt-28 pb-16 sm:pb-20 px-3 sm:px-6 text-center">
+      {/* ------------------------------------------------------------- */}
+      {/* HERO SANCTUARY BACKGROUND RENDER (TOP SECTION ONLY)           */}
+      {/* ------------------------------------------------------------- */}
+      {POLARIS_CONFIG.heroBackgroundImage && (
+        <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden">
+          {/* Responsive Architectural Render: Art-directed framing across viewports */}
+          <picture className="w-full h-full block">
+            {/* Mobile Viewports (< 768px): Tailored vertical framing showing the complete 4-story hotel facade, balconies, and alpine mountain summit */}
+            {POLARIS_CONFIG.heroBackgroundImageMobile && (
+              <source
+                media="(max-width: 767px)"
+                srcSet={POLARIS_CONFIG.heroBackgroundImageMobile}
+              />
+            )}
+            {/* Tablet & Desktop Viewports (>= 768px): 4K Ultra Wide Alpine Panorama with centered building */}
+            <img
+              src={POLARIS_CONFIG.heroBackgroundImage}
+              alt="Polaris Kalam Hotel & Alpine Mountain Sanctuary"
+              className="w-full h-full object-cover object-[42%_center] sm:object-[45%_center] md:object-[78%_center] lg:object-[76%_center] xl:object-center transform scale-[1.01]"
+            />
+          </picture>
 
-          <div className="sg-tile p-3 sm:p-4 rounded-xl hidden sm:flex items-center justify-between sg-crosshair">
-            <p className="sg-label sg-label--muted">35°29′N 72°35′E · 2,000M</p>
-          </div>
+          {/* Luminous Light Theme Luxury Translucent Wash */}
+          <div
+            className="absolute inset-0 bg-[#FAF9F5]"
+            style={{
+              opacity: POLARIS_CONFIG.heroBackgroundOverlayOpacity ?? 0.68,
+            }}
+          />
 
-          <div className="sg-tile p-3 sm:p-4 rounded-xl flex items-center justify-between sg-crosshair">
-            <p className="sg-label sg-label--gold">Soft Launch Dec 1st · Swat</p>
-            <span className="text-[10px] font-mono text-stone-400">VOL. 01</span>
-          </div>
+          {/* Depth-of-field luxury blur layer over high-definition image */}
+          <div className="absolute inset-0 backdrop-blur-[2px]" />
+
+          {/* Central radial focus: softer overlay in center for razor-sharp typography */}
+          <div
+            className="absolute inset-0"
+            style={{
+              background:
+                "radial-gradient(ellipse at center, rgba(255,255,255,0.45) 0%, rgba(250,249,245,0.2) 55%, rgba(250,249,245,0.7) 100%)",
+            }}
+          />
+
+          {/* Top navigation transition fade */}
+          <div className="absolute inset-x-0 top-0 h-36 bg-gradient-to-b from-[#FAF9F5] via-[#FAF9F5]/70 to-transparent" />
+
+          {/* Bottom transition gradient into Vision Section */}
+          <div className="absolute inset-x-0 bottom-0 h-44 bg-gradient-to-t from-[#FAF9F5] via-[#FAF9F5]/85 to-transparent" />
+
+          {/* Ambient warm celestial aura */}
+          <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[720px] h-[720px] rounded-full bg-amber-300/15 blur-3xl pointer-events-none" />
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------- */}
+      {/* FOREGROUND CONTENT                                            */}
+      {/* ------------------------------------------------------------- */}
+      <div className="relative z-10 w-full max-w-full flex flex-col items-center justify-center">
+        {/* ------------------------------------------------------------- */}
+        {/* ARCHITECTURAL GEOGRAPHIC BADGE                                */}
+        {/* ------------------------------------------------------------- */}
+        <div className="inline-flex items-center justify-center space-x-1.5 sm:space-x-2 px-3 sm:px-4 py-1.5 mb-6 sm:mb-8 border border-stone-200/90 bg-white/90 shadow-xs backdrop-blur-md rounded-full max-w-[92vw]">
+          <MapPin className="w-3.5 h-3.5 text-[#B48A28] shrink-0" />
+          <span className="text-[11px] sm:text-xs md:text-sm font-mono tracking-wider text-stone-700 uppercase font-medium truncate">
+            <span className="hidden sm:inline">
+              {POLARIS_CONFIG.coordinates} •{" "}
+            </span>
+            {POLARIS_CONFIG.location}
+          </span>
         </div>
 
-        {/* 2. GRAND LUXURY EDITORIAL DISPLAY ZONE */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-stretch">
-          
-          {/* Left Column (7 cols): Monumental Typography & Telemetry */}
-          <div className="lg:col-span-7 sg-tile p-6 sm:p-10 lg:p-12 rounded-2xl flex flex-col justify-between space-y-8 sg-crosshair">
-            <div className="space-y-4">
-              <div className="inline-flex items-center space-x-2 text-xs font-mono uppercase tracking-wider text-[#8A661C] font-semibold">
-                <Sparkles className="w-3.5 h-3.5 text-[#8A661C]" />
-                <span>AN ALPINE SANCTUARY IN KOHISTAN</span>
-              </div>
+        {/* ------------------------------------------------------------- */}
+        {/* AUTHENTIC BRAND EMBLEM                                        */}
+        {/* ------------------------------------------------------------- */}
+        <div className="relative mb-5 sm:mb-6 group cursor-default">
+          {/* Ambient star aura */}
+          <div className="absolute inset-0 bg-amber-400/20 blur-2xl rounded-full pointer-events-none transform scale-150 animate-pulse" />
+          <img
+            src={POLARIS_CONFIG.emblem}
+            alt="Polaris Hotels & Resorts Star"
+            className="relative w-16 h-16 sm:w-24 sm:h-24 md:w-28 md:h-28 object-contain mx-auto drop-shadow-[0_4px_20px_rgba(180,138,40,0.35)] transition-transform duration-700 group-hover:scale-105"
+          />
+        </div>
 
-              <h1 className="font-display text-4xl sm:text-6xl md:text-7xl font-normal tracking-tight text-stone-900 leading-[1.03]">
-                An Alpine Sanctuary <br className="hidden sm:inline" />
-                Above the Clouds
-              </h1>
+        {/* ------------------------------------------------------------- */}
+        {/* MONUMENTAL BRAND TITLE                                        */}
+        {/* ------------------------------------------------------------- */}
+        <div className="relative mb-2 w-full max-w-full px-2">
+          {/* Subtle decorative glow behind brand name */}
+          <div className="absolute inset-0 bg-amber-200/25 blur-3xl rounded-full pointer-events-none" />
 
-              <p className="text-sm sm:text-base md:text-lg text-stone-600 font-normal leading-relaxed max-w-xl">
-                A single monolithic sanctuary for high-altitude solitude, heated cedar hydrotherapy, and bespoke concierge hospitality, rising 2,000 meters amidst the ancient pine forests and glacial meltwater of Kalam Valley.
-              </p>
-            </div>
+          <h1 className="relative font-display text-3xl sm:text-6xl md:text-8xl lg:text-9xl tracking-[0.14em] sm:tracking-[0.22em] md:tracking-[0.25em] font-medium uppercase text-stone-900 break-words leading-tight">
+            {POLARIS_CONFIG.hotelName}
+          </h1>
+        </div>
 
-            {/* Swiss Telemetry 4-Cell Grid Dock */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-4 border-t border-stone-200">
-              <div className="p-3 rounded-lg bg-stone-50/80 border border-stone-200/60 space-y-0.5">
-                <span className="text-[9.5px] font-mono uppercase tracking-widest text-stone-400 font-bold block">
-                  Location
-                </span>
-                <div className="text-xs sm:text-sm font-semibold text-stone-900">
-                  Kalam Valley
-                </div>
-                <span className="text-[10px] font-mono text-stone-500">Swat Kohistan</span>
-              </div>
+        {/* Brand Subtitle Lockup (Matches Official Logo) */}
+        <p className="text-xs sm:text-sm md:text-base font-sans tracking-[0.16em] sm:tracking-[0.35em] md:tracking-[0.42em] uppercase text-[#B48A28] font-bold mb-2.5 sm:mb-3 px-2">
+          {POLARIS_CONFIG.brandSubtitle}
+        </p>
 
-              <div className="p-3 rounded-lg bg-stone-50/80 border border-stone-200/60 space-y-0.5">
-                <span className="text-[9.5px] font-mono uppercase tracking-widest text-stone-400 font-bold block">
-                  Altitude
-                </span>
-                <div className="text-xs sm:text-sm font-semibold text-stone-900">
-                  2,000M
-                </div>
-                <span className="text-[10px] font-mono text-stone-500">6,562 Feet</span>
-              </div>
+        {/* Brand Tagline */}
+        <p className="text-xs sm:text-sm md:text-base font-sans tracking-wide sm:tracking-[0.24em] uppercase text-stone-600 mb-5 sm:mb-6 font-semibold px-2">
+          {POLARIS_CONFIG.tagline}
+        </p>
 
-              <div className="p-3 rounded-lg bg-stone-50/80 border border-stone-200/60 space-y-0.5">
-                <span className="text-[9.5px] font-mono uppercase tracking-widest text-stone-400 font-bold block">
-                  Tiers
-                </span>
-                <div className="text-xs sm:text-sm font-semibold text-stone-900">
-                  4 Levels
-                </div>
-                <span className="text-[10px] font-mono text-stone-500">River to Sky</span>
-              </div>
+        {/* Narrative Subtitle */}
+        <p className="max-w-2xl text-stone-700 text-sm sm:text-base md:text-lg leading-relaxed font-normal mb-8 sm:mb-10 px-2 sm:px-4">
+          {POLARIS_CONFIG.mission.description}
+        </p>
 
-              <div className="p-3 rounded-lg bg-stone-50/80 border border-stone-200/60 space-y-0.5">
-                <span className="text-[9.5px] font-mono uppercase tracking-widest text-stone-400 font-bold block">
-                  Nightly
-                </span>
-                <div className="text-xs sm:text-sm font-semibold text-stone-900">
-                  PKR 45,000
-                </div>
-                <span className="text-[10px] font-mono text-emerald-700 font-semibold">Direct Open</span>
-              </div>
-            </div>
-
-            {/* CTA Actions Bar */}
-            <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-              {onOpenBooking && (
-                <button
-                  onClick={onOpenBooking}
-                  className="py-3.5 px-6 rounded-xl bg-stone-900 hover:bg-[#8A661C] active:scale-[0.98] text-white font-mono text-xs uppercase tracking-widest font-bold transition-all flex items-center justify-center space-x-2 shadow-sm spring-button group"
-                >
-                  <Calendar className="w-4 h-4 text-amber-300" />
-                  <span>Reserve Direct</span>
-                  <ArrowUpRight className="w-4 h-4 text-amber-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-                </button>
-              )}
-
+        {/* ------------------------------------------------------------- */}
+        {/* "BOOKING WILL BE OPEN SOON" PROMINENT LUXURY ANNOUNCEMENT     */}
+        {/* ------------------------------------------------------------- */}
+        <div className="w-full max-w-lg mb-8 sm:mb-10 p-4 sm:p-6 rounded-xl bg-gradient-to-r from-amber-50/90 via-[#FFFDF7] to-amber-50/90 border border-amber-300/80 text-center space-y-3 backdrop-blur-md shadow-[0_4px_25px_rgba(180,138,40,0.08)]">
+          <div className="flex items-center justify-center space-x-2 text-[#8A661C] text-xs sm:text-sm font-mono font-bold tracking-wider uppercase">
+            <Sparkles className="w-4 h-4 text-green-600 animate-pulse shrink-0" />
+            <span>BOOKING IS OPEN FOR SOFT LAUNCH DECEMBER</span>
+          </div>
+          <p className="text-xs sm:text-sm text-stone-700 font-normal leading-relaxed">
+            Our 4 floors of panoramic alpine suites and summit penthouse are
+            preparing for the 2026 inaugural season. Direct bookings are open
+            for December 2026 Launch.
+          </p>
+          {onOpenBooking && (
+            <div className="pt-1.5">
               <button
-                onClick={scrollToSuites}
-                className="py-3.5 px-5 rounded-xl border border-stone-300 hover:border-stone-900 bg-white hover:bg-stone-50 text-stone-900 font-mono text-xs uppercase tracking-widest font-bold transition-all flex items-center justify-center space-x-2 spring-button group"
+                onClick={onOpenBooking}
+                className="w-full sm:w-auto px-4 sm:px-5 py-2.5 bg-white hover:bg-amber-50/90 border border-amber-400/80 hover:border-amber-600 text-[#8A661C] hover:text-[#705215] text-xs sm:text-sm font-mono uppercase tracking-wider transition-all inline-flex items-center justify-center space-x-2 shadow-2xs font-bold rounded-lg"
               >
-                <span>Explore Horizons</span>
-                <ArrowRight className="w-4 h-4 text-stone-500 group-hover:translate-x-1 transition-transform" />
+                <span className="hidden sm:inline">
+                  Explore Suites & Pricing (Booking)
+                </span>
+                <span className="sm:hidden">Explore Suites & Pricing</span>
+                <ArrowUpRight className="w-4 h-4 text-amber-600 shrink-0" />
               </button>
             </div>
-          </div>
-
-          {/* Right Column (5 cols): High-Contrast Architectural Photographic Exhibit */}
-          <div className="lg:col-span-5 sg-tile rounded-2xl overflow-hidden relative min-h-[360px] sm:min-h-[460px] lg:min-h-full flex flex-col justify-between group sg-crosshair">
-            <picture className="absolute inset-0 w-full h-full block">
-              {POLARIS_CONFIG.heroBackgroundImageMobile && (
-                <source
-                  media="(max-width: 767px)"
-                  srcSet={POLARIS_CONFIG.heroBackgroundImageMobile}
-                />
-              )}
-              <img
-                src={POLARIS_CONFIG.heroBackgroundImage}
-                alt="Polaris Alpine Hotel Kalam Swat"
-                className="w-full h-full object-cover object-[45%_center] md:object-center filter contrast-[1.04] brightness-[1.01] transition-transform duration-700 ease-out group-hover:scale-105"
-              />
-            </picture>
-
-            <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-transparent to-black/20 pointer-events-none" />
-
-            {/* Top metadata tag */}
-            <div className="relative z-10 p-4 sm:p-5 flex items-center justify-between">
-              <span className="px-3 py-1 rounded-md bg-black/50 backdrop-blur-md border border-white/20 text-white font-mono text-[10px] uppercase tracking-widest font-bold">
-                EXHIBIT 01 // ARCHITECTURE
-              </span>
-              <span className="text-[10px] font-mono text-white/75 bg-black/40 px-2.5 py-0.5 rounded backdrop-blur-xs">
-                SWAT RIVER
-              </span>
-            </div>
-
-            {/* Bottom Monograph Caption Card */}
-            <div className="relative z-10 p-4 sm:p-5">
-              <div className="p-4 rounded-xl bg-black/55 backdrop-blur-md border border-white/15 space-y-1.5">
-                <span className="text-[9.5px] font-mono uppercase tracking-widest text-amber-300 font-bold block">
-                  MONOLITHIC ALPINE SANCTUARY
-                </span>
-                <p className="text-xs sm:text-sm font-light text-stone-100 leading-snug">
-                  Himalayan cedar timber, heated basalt floors, and unobstructed panoramic glacial glass rising along the Swat River.
-                </p>
-              </div>
-            </div>
-          </div>
-
+          )}
         </div>
 
+        {/* ------------------------------------------------------------- */}
+        {/* COUNTDOWN SECTION                                             */}
+        {/* ------------------------------------------------------------- */}
+        <div className="w-full max-w-xl mb-10 sm:mb-12 px-1 sm:px-0">
+          <div className="flex items-center justify-center space-x-3 mb-4">
+            <span className="h-[1px] w-6 sm:w-8 bg-amber-400/60" />
+            <span className="text-xs sm:text-sm font-sans tracking-wider uppercase text-[#8A661C] font-bold">
+              Anticipated Inaugural Season
+            </span>
+            <span className="h-[1px] w-6 sm:w-8 bg-amber-400/60" />
+          </div>
+
+          <CountdownTimer />
+        </div>
+
+        {/* ------------------------------------------------------------- */}
+        {/* CALL TO ACTION / PRIORITY WAITLIST NOTIFICATION               */}
+        {/* ------------------------------------------------------------- */}
+        <div className="w-full max-w-md px-1 sm:px-0">
+          {isSubmitted ? (
+            <div className="p-4 bg-emerald-50/90 border border-emerald-300 rounded-lg flex items-center justify-center space-x-3 text-emerald-900 text-xs sm:text-sm tracking-wide shadow-xs font-medium">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>
+                Registration confirmed. Look for your invitation for our
+                December 1st Soft Launch.
+              </span>
+            </div>
+          ) : (
+            <form
+              onSubmit={handleQuickSignup}
+              className="flex flex-col sm:flex-row gap-2.5 sm:gap-2 w-full max-w-full"
+            >
+              <input
+                type="email"
+                required
+                disabled={isLoading}
+                placeholder="Enter your email for Dec 1 soft launch"
+                value={emailInput}
+                onChange={(e) => setEmailInput(e.target.value)}
+                className="w-full flex-1 px-4 py-3 sm:py-3.5 bg-white border border-stone-300 rounded-lg text-stone-900 placeholder-stone-500 text-sm sm:text-base focus:outline-none focus:border-amber-600 focus:ring-1 focus:ring-amber-500 transition-colors font-sans disabled:opacity-50 shadow-2xs"
+              />
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full sm:w-auto px-6 py-3 sm:py-3.5 bg-[#B48A28] hover:bg-[#9E7719] disabled:bg-amber-400/50 text-white rounded-lg text-xs sm:text-sm font-bold tracking-wider uppercase transition-all duration-300 flex items-center justify-center space-x-2 shadow-xs hover:shadow-sm shrink-0"
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Joining...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Join Waitlist</span>
+                    <ArrowUpRight className="w-4 h-4" />
+                  </>
+                )}
+              </button>
+            </form>
+          )}
+        </div>
+
+        {/* Subtle Scroll Down Cue */}
+        <div className="mt-12 sm:mt-16 flex flex-col items-center opacity-70 hover:opacity-100 transition-opacity">
+          <span className="text-xs tracking-wider uppercase text-stone-600 mb-2 font-semibold">
+            Discover The Vision
+          </span>
+          <ArrowDown className="w-4 h-4 text-stone-600 animate-bounce" />
+        </div>
       </div>
     </section>
   );
