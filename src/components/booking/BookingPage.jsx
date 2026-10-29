@@ -510,8 +510,7 @@ export default function BookingPage({
         </h1>
 
         <p className="text-sm sm:text-base md:text-lg text-stone-700 font-normal mt-4 max-w-2xl mx-auto leading-relaxed px-2">
-          Crafted with monolithic stone, heated cedar wood, and unobstructed
-          glacial glass. Select an available suite to submit your reservation
+          Equiped with Central Heating, Doubled Paned Glass, Traditional Heating Systems, Traditional AC Units, 24/7 Room Service and Free WiFi. Select an available suite to submit your reservation
           request. Our concierge desk will contact you directly on{" "}
           <strong className="font-semibold text-stone-900">WhatsApp</strong> to
           finalize your booking.
