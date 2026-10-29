@@ -87,10 +87,10 @@ export const POLARIS_CONFIG = {
   pillars: [
     {
       number: "01",
-      title: "Panoramic Glass Living",
+      title: "Central Heated Rooms & AC Units",
       category: "ARCHITECTURE",
       description:
-        "Monolithic, climate-engineered suites offering unobstructed floor-to-ceiling vistas of Kalam's snow-clad horizons and celestial night skies.",
+        "All rooms are equiped with Central Heating Systems to ensure that your stay is as comfortable as you wish, Apart from that double paned glass and traditional AC units ensure that you can fine tune your experience with your own hands.",
     },
     {
       number: "02",
@@ -108,10 +108,10 @@ export const POLARIS_CONFIG = {
     },
     {
       number: "04",
-      title: "Holistic Thermal Sanctuary",
-      category: "WELLNESS",
+      title: "Safe & Secure Basement Parking",
+      category: "Security",
       description:
-        "Heated infinity hydrotherapy pools, mountain herb steam baths, and serene relaxation spaces crafted from local stone.",
+        "24/7 Monitored CCTV and Guarded Basement Parking | Free",
     },
   ],
 
